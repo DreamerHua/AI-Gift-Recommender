@@ -127,6 +127,7 @@ const translations = {
 let currentLang = 'zh';
 
 // 用户会话数据
+let sessionCreated = false; // 添加标志防止重复创建会话
 let sessionData = {
     userId: null,
     sessionId: null,
@@ -256,7 +257,9 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             showPage(welcomePage);
-            createSession();
+            if (!sessionCreated) {
+                createSession();
+            }
         } else {
             // 用户未登录
             recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
@@ -346,7 +349,9 @@ auth.getRedirectResult().then(function(result) {
         // 登录成功
         var user = result.user;
         sessionData.userId = user.uid;
-        createSession();
+        if (!sessionCreated) {
+            createSession();
+        }
     }
 }).catch(function(error) {
     console.error('Google登录失败:', error);
@@ -365,7 +370,9 @@ guestLoginBtn.addEventListener('click', function() {
             } else if (auth.currentUser) {
                 sessionData.userId = auth.currentUser.uid;
             }
-            createSession();
+            if (!sessionCreated) {
+                createSession();
+            }
             console.log('匿名登录成功，用户ID:', sessionData.userId);
         })
         .catch(function(error) {
@@ -725,6 +732,11 @@ function trackPerformanceMetric(metricType, value) {
 
 // 创建新会话
 function createSession() {
+    if (sessionCreated) {
+        console.log('会话已存在，跳过创建');
+        return;
+    }
+    
     try {
         sessionData.metrics.sessionStartTime = new Date();
         
@@ -738,6 +750,7 @@ function createSession() {
             userBehavior: sessionData.userBehavior
         }).then(function(sessionRef) {
             sessionData.sessionId = sessionRef.id;
+            sessionCreated = true; // 标记会话已创建
             
             recordEvent(EVENT_TYPES.SESSION_START, {
                 sessionId: sessionData.sessionId,
