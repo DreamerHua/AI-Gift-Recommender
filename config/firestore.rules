@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 允许认证用户访问sessions集合
+    match /sessions/{sessionId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // 允许认证用户访问events集合（用于事件追踪）
+    match /events/{eventId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    
+    // 允许认证用户访问analytics集合（用于数据分析）
+    match /analytics/{docId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // 其他集合默认拒绝访问
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

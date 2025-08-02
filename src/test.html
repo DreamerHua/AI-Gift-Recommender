@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试页面</title>
+</head>
+<body>
+    <h1>Firebase 匿名登录测试</h1>
+    <p>这是一个测试页面，用于验证匿名登录和数据写入功能。</p>
+    
+    <div id="loginStatus">
+        <p>登录状态: <span id="statusText">未登录</span></p>
+        <p>用户ID: <span id="userIdText">无</span></p>
+    </div>
+    
+    <div id="controls">
+        <button id="loginBtn" onclick="anonymousLogin()">匿名登录</button>
+        <button id="logoutBtn" onclick="logout()" disabled>登出</button>
+        <button id="writeDataBtn" onclick="writeTestData()" disabled>写入测试数据</button>
+    </div>
+    
+    <div id="output">
+        <h3>操作日志:</h3>
+        <div id="logOutput"></div>
+    </div>
+
+    <!-- 引入Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    
+    <!-- 引入简化版的app.js -->
+    <script>
+    // Firebase配置 - 使用正确的项目ID
+    var firebaseConfig = {
+        apiKey: "AIzaSyCCbq5fBkoVKV6nAKrbliPz7jxSqNZgckM",
+        authDomain: "ai-gift-recommender-d6076.firebaseapp.com",
+        projectId: "ai-gift-recommender-d6076",
+        storageBucket: "ai-gift-recommender-d6076.firebasestorage.app",
+        messagingSenderId: "719636185968",
+        appId: "1:719636185968:web:9e6ed11e94dc6416ae05b5",
+        measurementId: "G-SFNYKHWSJJ"
+    };
+
+    // 初始化Firebase
+    firebase.initializeApp(firebaseConfig);
+    var auth = firebase.auth();
+    var db = firebase.firestore();
+
+    // 全局变量
+    var currentUser = null;
+    
+    // 日志输出函数
+    function addLog(message) {
+        const logOutput = document.getElementById('logOutput');
+        const timestamp = new Date().toLocaleTimeString();
+        logOutput.innerHTML += `<p>[${timestamp}] ${message}</p>`;
+        logOutput.scrollTop = logOutput.scrollHeight;
+        console.log(message);
+    }
+    
+    // 更新UI状态
+    function updateUI(user) {
+        const statusText = document.getElementById('statusText');
+        const userIdText = document.getElementById('userIdText');
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const writeDataBtn = document.getElementById('writeDataBtn');
+        
+        if (user) {
+            statusText.textContent = '已登录';
+            userIdText.textContent = user.uid;
+            loginBtn.disabled = true;
+            logoutBtn.disabled = false;
+            writeDataBtn.disabled = false;
+            addLog(`用户已登录: ${user.uid}`);
+        } else {
+            statusText.textContent = '未登录';
+            userIdText.textContent = '无';
+            loginBtn.disabled = false;
+            logoutBtn.disabled = true;
+            writeDataBtn.disabled = true;
+            addLog('用户已登出');
+        }
+    }
+    
+    // 匿名登录函数
+    function anonymousLogin() {
+        addLog('开始匿名登录...');
+        auth.signInAnonymously()
+            .then((result) => {
+                currentUser = result.user;
+                addLog('匿名登录成功!');
+                updateUI(currentUser);
+            })
+            .catch((error) => {
+                addLog(`登录失败: ${error.code} - ${error.message}`);
+                console.error('登录错误:', error);
+            });
+    }
+    
+    // 登出函数
+    function logout() {
+        addLog('开始登出...');
+        auth.signOut()
+            .then(() => {
+                currentUser = null;
+                addLog('登出成功!');
+                updateUI(null);
+            })
+            .catch((error) => {
+                addLog(`登出失败: ${error.message}`);
+                console.error('登出错误:', error);
+            });
+    }
+    
+    // 写入测试数据函数
+    function writeTestData() {
+        if (!currentUser) {
+            addLog('错误: 用户未登录');
+            return;
+        }
+        
+        addLog('开始写入测试数据...');
+        
+        const testData = {
+            userId: currentUser.uid,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            testMessage: '这是一条测试数据',
+            randomNumber: Math.floor(Math.random() * 1000)
+        };
+        
+        db.collection('test_sessions').add(testData)
+            .then((docRef) => {
+                addLog(`数据写入成功! 文档ID: ${docRef.id}`);
+            })
+            .catch((error) => {
+                addLog(`数据写入失败: ${error.code} - ${error.message}`);
+                console.error('写入错误:', error);
+            });
+    }
+    
+    // 监听认证状态变化
+    auth.onAuthStateChanged((user) => {
+        currentUser = user;
+        updateUI(user);
+    });
+    
+    // 页面加载完成后执行
+    document.addEventListener('DOMContentLoaded', function() {
+        addLog('页面已加载完成，Firebase已初始化');
+        addLog('请点击"匿名登录"按钮开始测试');
+    });
+    </script>
+</body>
+</html>
