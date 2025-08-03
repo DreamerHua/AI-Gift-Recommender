@@ -276,21 +276,24 @@ document.addEventListener('DOMContentLoaded', function() {
             
             showPage(welcomePage);
         } else {
-            // 用户未登录或是匿名用户，都显示登录页面
+            // 用户未登录或是匿名用户
             if (user && user.isAnonymous) {
+                // 匿名用户登录成功，跳转到欢迎页面
                 sessionData.userId = user.uid;
                 recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
                     userId: user.uid,
                     loginMethod: 'anonymous',
                     timestamp: new Date()
                 });
+                showPage(welcomePage);
             } else {
+                // 用户未登录，显示登录页面
                 recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
                     status: 'no_user',
                     timestamp: new Date()
                 });
+                showPage(loginPage);
             }
-            showPage(loginPage);
         }
     });
     
@@ -1354,11 +1357,11 @@ function generateRecommendations() {
 function highlightStars(count) {
     starRating.querySelectorAll('.star').forEach((star, index) => {
         if (index < count) {
-            star.classList.add('text-amber-400');
-            star.classList.remove('text-stone-300');
+            star.classList.add('text-yellow-500', 'stroke-black');
+            star.classList.remove('text-gray-400');
         } else {
-            star.classList.remove('text-amber-400');
-            star.classList.add('text-stone-300');
+            star.classList.remove('text-yellow-500', 'stroke-black');
+            star.classList.add('text-gray-400');
         }
     });
 }
@@ -1366,17 +1369,17 @@ function highlightStars(count) {
 // 更新语言按钮样式
 function updateLanguageButtons() {
     if (currentLang === 'zh') {
-        langZhBtn.classList.add('bg-amber-400', 'text-white');
+        langZhBtn.classList.add('bg-yellow-500', 'text-white');
         langZhBtn.classList.remove('bg-white', 'text-stone-700');
         
-        langEnBtn.classList.add('bg-white', 'text-stone-700');
-        langEnBtn.classList.remove('bg-amber-400', 'text-white');
+        langEnBtn.classList.add('bg-white', 'text-black');
+        langEnBtn.classList.remove('bg-yellow-500', 'text-white');
     } else {
-        langEnBtn.classList.add('bg-amber-400', 'text-white');
+        langEnBtn.classList.add('bg-yellow-500', 'text-white');
         langEnBtn.classList.remove('bg-white', 'text-stone-700');
         
-        langZhBtn.classList.add('bg-white', 'text-stone-700');
-        langZhBtn.classList.remove('bg-amber-400', 'text-white');
+        langZhBtn.classList.add('bg-white', 'text-black');
+        langZhBtn.classList.remove('bg-yellow-500', 'text-white');
     }
 }
 
