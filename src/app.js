@@ -70,7 +70,9 @@ const translations = {
         'feedback.button': '提交反馈',
         'gift.price': '价格范围',
         'gift.why': '为什么适合',
-        'gift.where': '哪里购买'
+        'gift.where': '哪里购买',
+        'gift.select': '加入心愿单',
+        'gift.selected': '已加入心愿单'
     },
     'en': {
         'login.title': 'Welcome Back',
@@ -119,7 +121,9 @@ const translations = {
         'feedback.button': 'Submit Feedback',
         'gift.price': 'Price Range',
         'gift.why': 'Why It Fits',
-        'gift.where': 'Where to Buy'
+        'gift.where': 'Where to Buy',
+        'gift.select': 'Add to Wishlist',
+        'gift.selected': 'Added to Wishlist'
     }
 };
 
@@ -133,11 +137,11 @@ let sessionData = {
     sessionId: null,
     answers: {},
     recommendations: [],
+    selectedGifts: [],
     feedback: {
         rating: 0,
         comment: ''
     },
-    // 增强的事件追踪数据
     events: [],
     metrics: {
         sessionStartTime: null,
@@ -154,23 +158,24 @@ let sessionData = {
     }
 };
 
-// 事件类型常量
+// 事件类型常量定义
 const EVENT_TYPES = {
-    SESSION_START: 'session_start',
-    SESSION_END: 'session_end',
-    LOGIN_ATTEMPT: 'login_attempt',
-    LOGIN_SUCCESS: 'login_success',
-    LOGIN_FAILURE: 'login_failure',
-    STEP_START: 'step_start',
-    STEP_COMPLETE: 'step_complete',
-    ANSWER_SELECTED: 'answer_selected',
-    RECOMMENDATION_GENERATED: 'recommendation_generated',
-    RECOMMENDATION_VIEWED: 'recommendation_viewed',
-    FEEDBACK_SUBMITTED: 'feedback_submitted',
-    LANGUAGE_CHANGED: 'language_changed',
-    ERROR_OCCURRED: 'error_occurred',
-    PAGE_VIEW: 'page_view',
-    USER_INTERACTION: 'user_interaction'
+    SESSION_START: 'session_start',      // 用户会话开始
+    SESSION_END: 'session_end',          // 用户会话结束
+    LOGIN_ATTEMPT: 'login_attempt',      // 用户尝试登录
+    LOGIN_SUCCESS: 'login_success',      // 用户登录成功
+    LOGIN_FAILURE: 'login_failure',      // 用户登录失败
+    QUIZ_START: 'quiz_start',            // 用户开始回答与礼物推荐相关的问题
+    STEP_START: 'step_start',            // 开始回答某个问题步骤
+    STEP_COMPLETE: 'step_complete',      // 完成某个问题步骤
+    ANSWER_SELECTED: 'answer_selected',  // 用户选择了某个答案
+    QUIZ_COMPLETED: 'quiz_completed',    // 用户完成了所有问题的回答
+    RECOMMENDATION_GENERATED: 'recommendation_generated',  // 生成礼物推荐列表
+    GIFT_VIEWED: 'gift_viewed',          // 用户查看了某个礼物推荐结果
+    GIFT_SELECTED: 'gift_selected',      // 用户选择了某个礼物
+    FEEDBACK_SUBMITTED: 'feedback_submitted',  // 用户提交反馈
+    LANGUAGE_CHANGED: 'language_changed',      // 切换语言
+    ERROR_OCCURRED: 'error_occurred',          // 发生错误
 };
 
 // 模拟的礼物推荐数据
@@ -233,14 +238,6 @@ const langEnBtn = document.getElementById('lang-en');
 document.addEventListener('DOMContentLoaded', function() {
     console.log('页面加载完成');
     
-    // 记录页面加载事件
-    recordEvent(EVENT_TYPES.PAGE_VIEW, {
-        page: 'main',
-        userAgent: navigator.userAgent,
-        language: navigator.language,
-        timestamp: new Date()
-    });
-    
     // 应用当前语言
     applyTranslations();
     
@@ -276,28 +273,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 添加全局事件监听器
 function addGlobalEventListeners() {
-    // 点击事件追踪
-    document.addEventListener('click', function(event) {
-        trackUserBehavior('click', {
-            element: event.target.tagName,
-            className: event.target.className,
-            id: event.target.id,
-            timestamp: new Date()
-        });
-    });
-    
-    // 滚动事件追踪
-    let scrollTimeout;
-    document.addEventListener('scroll', function() {
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-            trackUserBehavior('scroll', {
-                scrollY: window.scrollY,
-                timestamp: new Date()
-            });
-        }, 100);
-    });
-    
     // 页面离开事件追踪
     window.addEventListener('beforeunload', function() {
         if (sessionData.sessionId) {
@@ -383,8 +358,20 @@ guestLoginBtn.addEventListener('click', function() {
 
 // 开始按钮事件监听
 startButton.addEventListener('click', function() {
+    // 记录问答开始事件
+    recordEvent(EVENT_TYPES.QUIZ_START, {
+        timestamp: new Date(),
+        totalQuestions: 5
+    });
+    
     showPage(questionsContainer);
     showStep(stepRelationship);
+    
+    // 记录第一个步骤开始
+    recordEvent(EVENT_TYPES.STEP_START, {
+        stepName: 'step-relationship',
+        timestamp: new Date()
+    });
 });
 
 // 选项按钮事件监听
@@ -434,6 +421,14 @@ document.querySelectorAll('.option-btn').forEach(function(button) {
             showStep(stepLoveLanguage);
         } else if (step === 'step-love-language') {
             hideStep(stepLoveLanguage);
+            
+            // 记录问答完成事件
+            recordEvent(EVENT_TYPES.QUIZ_COMPLETED, {
+                totalStepsCompleted: 5,
+                allAnswers: sessionData.answers,
+                timestamp: new Date()
+            });
+            
             showPage(loadingPage);
             
             // 模拟加载时间
@@ -450,7 +445,7 @@ document.querySelectorAll('.option-btn').forEach(function(button) {
                 
                 showPage(resultsPage);
                 
-                recordEvent(EVENT_TYPES.RECOMMENDATION_VIEWED, {
+                recordEvent(EVENT_TYPES.GIFT_VIEWED, {
                     recommendationCount: sessionData.recommendations.length,
                     timestamp: new Date()
                 });
@@ -663,7 +658,6 @@ function shouldSaveEventImmediately(eventType) {
         EVENT_TYPES.SESSION_END,
         EVENT_TYPES.LOGIN_SUCCESS,
         EVENT_TYPES.ERROR_OCCURRED,
-        EVENT_TYPES.FEEDBACK_SUBMITTED
     ];
     return immediateEvents.includes(eventType);
 }
@@ -673,7 +667,7 @@ function saveEventToFirestore(event) {
     try {
         if (!sessionData.sessionId) return;
         
-        db.collection('events').add({
+        db.collection('HighPriorityEvents').add({
             ...event,
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         }).then(function(eventRef) {
@@ -701,11 +695,7 @@ function trackUserBehavior(behaviorType, data = {}) {
             break;
     }
     
-    recordEvent(EVENT_TYPES.USER_INTERACTION, {
-        behaviorType,
-        data,
-        currentBehaviorCounts: { ...sessionData.userBehavior }
-    });
+    // 只更新行为计数，不再记录USER_INTERACTION事件
 }
 
 // 性能指标追踪
@@ -958,6 +948,8 @@ function generateRecommendations() {
         const giftElement = document.createElement('div');
         giftElement.className = 'bg-stone-50 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow';
         
+        const isSelected = sessionData.selectedGifts.some(selectedGift => selectedGift.id === gift.id);
+        
         giftElement.innerHTML = `
             <div class="flex flex-col md:flex-row gap-4">
                 <div class="w-full md:w-1/4 flex-shrink-0">
@@ -981,11 +973,49 @@ function generateRecommendations() {
                             <p>${gift.where}</p>
                         </div>
                     </div>
+                    
+                    <div class="mt-4">
+                        <button class="gift-select-btn px-4 py-2 rounded-lg font-medium transition-colors ${
+                            isSelected 
+                                ? 'bg-green-600 text-white cursor-default' 
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }" data-gift-id="${gift.id}" ${isSelected ? 'disabled' : ''}>
+                            ${isSelected ? translations[currentLang]['gift.selected'] : translations[currentLang]['gift.select']}
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
         
         recommendationsContainer.appendChild(giftElement);
+    });
+    
+    // 添加选择按钮事件监听
+    document.querySelectorAll('.gift-select-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const giftId = parseInt(this.dataset.giftId);
+            const gift = sessionData.recommendations.find(g => g.id === giftId);
+            
+            if (gift && !sessionData.selectedGifts.some(selectedGift => selectedGift.id === giftId)) {
+                // 添加到选中列表
+                sessionData.selectedGifts.push(gift);
+                
+                // 记录GIFT_SELECTED事件
+                recordEvent(EVENT_TYPES.GIFT_SELECTED, {
+                    giftId: gift.id,
+                    giftTitle: gift.title,
+                    giftPrice: gift.price,
+                    selectionOrder: sessionData.selectedGifts.length,
+                    totalRecommendations: sessionData.recommendations.length,
+                    timestamp: new Date()
+                });
+                
+                // 更新按钮状态
+                this.textContent = translations[currentLang]['gift.selected'];
+                this.className = 'gift-select-btn px-4 py-2 rounded-lg font-medium transition-colors bg-green-600 text-white cursor-default';
+                this.disabled = true;
+            }
+        });
     });
 }
 
