@@ -190,7 +190,7 @@ const mockRecommendations = [
         price: '¥199 - ¥299',
         reason: '结合了浪漫元素和个性化定制，非常适合纪念日或生日礼物。',
         where: '淘宝、亚马逊、天猫',
-        image: 'https://via.placeholder.com/150?text=星空灯'
+        image: 'https://i.etsystatic.com/5996810/r/il/de6316/1957231659/il_800x800.1957231659_rkvl.jpg'
     },
     {
         id: 2,
@@ -199,7 +199,7 @@ const mockRecommendations = [
         price: '¥300 - ¥500',
         reason: '实用且有纪念意义，适合喜欢精致物品的人。',
         where: '手工艺品网站、Etsy、定制皮具店',
-        image: 'https://via.placeholder.com/150?text=皮革钱包'
+        image: 'https://i.etsystatic.com/15339935/r/il/524abc/6624037822/il_1588xN.6624037822_koh5.jpg'
     },
     {
         id: 3,
@@ -208,7 +208,7 @@ const mockRecommendations = [
         price: '¥150 - ¥300',
         reason: '充满情感价值，可以记录你们的故事和珍贵时刻。',
         where: '美图秀秀、小红书推荐的照片书App',
-        image: 'https://via.placeholder.com/150?text=照片书'
+        image: 'https://img-1.kwcdn.com/product/Fancyalgo/VirtualModelMatting/80be66f6b9b344007357f3a077691cbb.jpg?imageView2/2/w/264/q/70/format/webp'
     }
 ];
 
