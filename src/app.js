@@ -167,8 +167,7 @@ const EVENT_TYPES = {
     LOGIN_FAILURE: 'login_failure',      // 用户登录失败
     QUIZ_START: 'quiz_start',            // 用户开始回答与礼物推荐相关的问题
     STEP_START: 'step_start',            // 开始回答某个问题步骤
-    STEP_COMPLETE: 'step_complete',      // 完成某个问题步骤
-    ANSWER_SELECTED: 'answer_selected',  // 用户选择了某个答案
+    STEP_COMPLETE: 'step_complete',      // 完成某个问题步骤（包含用户选择的答案和完成时间）
     QUIZ_COMPLETED: 'quiz_completed',    // 用户完成了所有问题的回答
     RECOMMENDATION_GENERATED: 'recommendation_generated',  // 生成礼物推荐列表
     GIFT_VIEWED: 'gift_viewed',          // 用户查看了某个礼物推荐结果
@@ -254,9 +253,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             showPage(welcomePage);
-            if (!sessionCreated) {
-                createSession();
-            }
         } else {
             // 用户未登录
             recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
@@ -319,22 +315,21 @@ googleLoginBtn.addEventListener('click', function() {
 });
 
 // 处理重定向登录后的结果
-auth.getRedirectResult().then(function(result) {
-    if (result.user) {
-        // 登录成功
-        var user = result.user;
-        sessionData.userId = user.uid;
-        if (!sessionCreated) {
-            createSession();
+auth.getRedirectResult()
+    .then(function(result) {
+        if (result.user) {
+            // 登录成功
+            var user = result.user;
+            sessionData.userId = user.uid;
         }
-    }
-}).catch(function(error) {
-    console.error('Google登录失败:', error);
-    // 显示错误信息给用户
-    if (error.code === 'auth/account-exists-with-different-credential') {
-        alert('此邮箱已经使用其他登录方式注册过账号');
-    }
-});
+    })
+    .catch(function(error) {
+        console.error('Google登录失败:', error);
+        // 显示错误信息给用户
+        if (error.code === 'auth/account-exists-with-different-credential') {
+            alert('此邮箱已经使用其他登录方式注册过账号');
+        }
+    });
 
 guestLoginBtn.addEventListener('click', function() {
     auth.signInAnonymously()
@@ -344,9 +339,6 @@ guestLoginBtn.addEventListener('click', function() {
                 sessionData.userId = result.user.uid;
             } else if (auth.currentUser) {
                 sessionData.userId = auth.currentUser.uid;
-            }
-            if (!sessionCreated) {
-                createSession();
             }
             console.log('匿名登录成功，用户ID:', sessionData.userId);
         })
@@ -358,20 +350,46 @@ guestLoginBtn.addEventListener('click', function() {
 
 // 开始按钮事件监听
 startButton.addEventListener('click', function() {
-    // 记录问答开始事件
-    recordEvent(EVENT_TYPES.QUIZ_START, {
-        timestamp: new Date(),
-        totalQuestions: 5
-    });
-    
-    showPage(questionsContainer);
-    showStep(stepRelationship);
-    
-    // 记录第一个步骤开始
-    recordEvent(EVENT_TYPES.STEP_START, {
-        stepName: 'step-relationship',
-        timestamp: new Date()
-    });
+    // 检查是否已经创建会话，避免重复创建
+    if (!sessionCreated) {
+        // 在用户真正开始问答时创建会话
+        createSession().then(function() {
+            // 记录问答开始事件
+            recordEvent(EVENT_TYPES.QUIZ_START, {
+                timestamp: new Date(),
+                totalQuestions: 5
+            });
+            
+            showPage(questionsContainer);
+            showStep(stepRelationship);
+            
+            // 记录第一个步骤开始
+            recordEvent(EVENT_TYPES.STEP_START, {
+                stepName: 'step-relationship',
+                timestamp: new Date()
+            });
+        }).catch(function(error) {
+            console.error('创建会话失败，无法开始问答:', error);
+            // 即使创建会话失败，也允许用户继续使用（但不会保存数据）
+            showPage(questionsContainer);
+            showStep(stepRelationship);
+        });
+    } else {
+        // 会话已存在，直接开始问答
+        recordEvent(EVENT_TYPES.QUIZ_START, {
+            timestamp: new Date(),
+            totalQuestions: 5
+        });
+        
+        showPage(questionsContainer);
+        showStep(stepRelationship);
+        
+        // 记录第一个步骤开始
+        recordEvent(EVENT_TYPES.STEP_START, {
+            stepName: 'step-relationship',
+            timestamp: new Date()
+        });
+    }
 });
 
 // 选项按钮事件监听
@@ -439,7 +457,7 @@ document.querySelectorAll('.option-btn').forEach(function(button) {
                 recordEvent(EVENT_TYPES.RECOMMENDATION_GENERATED, {
                     totalStepsCompleted: 5,
                     allAnswers: sessionData.answers,
-                    generationTime: Date.now() - recommendationStartTime,
+                    // generationTime: Date.now() - recommendationStartTime,    // 暂时不需要记录这个字段
                     timestamp: new Date()
                 });
                 
@@ -725,23 +743,51 @@ function trackPerformanceMetric(metricType, value) {
 function createSession() {
     if (sessionCreated) {
         console.log('会话已存在，跳过创建');
-        return;
+        return Promise.resolve();
     }
     
     try {
         sessionData.metrics.sessionStartTime = new Date();
         
-        db.collection('sessions').add({
+        // 定义session document的字段顺序
+        const sessionDoc = {
             userId: sessionData.userId,
-            startTime: firebase.firestore.FieldValue.serverTimestamp(),
+            sessionStartTime: firebase.firestore.FieldValue.serverTimestamp(),
             device: navigator.userAgent,
             language: currentLang,
+            answers: {},
+            selectedGifts: [],
+            feedback: {
+                rating: 0,
+                comment: ''
+            },
             events: [],
-            metrics: sessionData.metrics,
-            userBehavior: sessionData.userBehavior
-        }).then(function(sessionRef) {
+            metrics: {
+                sessionStartTime: sessionData.metrics.sessionStartTime,
+                totalTimeSpent: 0,
+                stepCompletionTimes: {},
+                errorCount: 0,
+                retryCount: 0
+            },
+            userBehavior: {
+                clickCount: 0,
+                scrollCount: 0,
+                languageSwitches: 0,
+                backButtonUsage: 0
+            },
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        return db.collection('sessions').add(sessionDoc).then(function(sessionRef) {
             sessionData.sessionId = sessionRef.id;
             sessionCreated = true; // 标记会话已创建
+            
+            // 更新document以包含sessionId字段
+            sessionRef.update({
+                sessionId: sessionData.sessionId
+            }).catch(function(error) {
+                console.error('更新sessionId失败:', error);
+            });
             
             recordEvent(EVENT_TYPES.SESSION_START, {
                 sessionId: sessionData.sessionId,
@@ -750,6 +796,7 @@ function createSession() {
             });
             
             console.log('会话已创建:', sessionData.sessionId);
+            return sessionRef;
         });
     } catch (error) {
         recordEvent(EVENT_TYPES.ERROR_OCCURRED, {
@@ -758,6 +805,7 @@ function createSession() {
         });
         trackPerformanceMetric('error_count');
         console.error('创建会话失败:', error);
+        return Promise.reject(error);
     }
 }
 
@@ -792,13 +840,6 @@ function recordAnswer(step, value) {
                 duration
             });
 
-            recordEvent(EVENT_TYPES.ANSWER_SELECTED, {
-                step,
-                value,
-                duration,
-                timestamp: new Date()
-            });
-
             console.log('回答已记录:', step, value);
         }).catch(function(error) {
             recordEvent(EVENT_TYPES.ERROR_OCCURRED, {
@@ -827,10 +868,10 @@ function saveRecommendations() {
             const sessionRef = db.collection('sessions').doc(sessionData.sessionId);
             sessionRef.update({
                 recommendations: sessionData.recommendations,
+                selectedGifts: sessionData.selectedGifts,
                 events: sessionData.events,
                 metrics: sessionData.metrics,
-                userBehavior: sessionData.userBehavior,
-                recommendationTime: firebase.firestore.FieldValue.serverTimestamp()
+                userBehavior: sessionData.userBehavior
             }).then(function() {
                 recordEvent(EVENT_TYPES.RECOMMENDATION_GENERATED, {
                     recommendationCount: sessionData.recommendations.length,
@@ -1010,6 +1051,17 @@ function generateRecommendations() {
                     totalRecommendations: sessionData.recommendations.length,
                     timestamp: new Date()
                 });
+                
+                // 更新Firebase中的selectedGifts字段
+                if (sessionData.sessionId) {
+                    const sessionRef = db.collection('sessions').doc(sessionData.sessionId);
+                    sessionRef.update({
+                        selectedGifts: sessionData.selectedGifts,
+                        events: sessionData.events
+                    }).catch(function(error) {
+                        console.error('更新选中礼物失败:', error);
+                    });
+                }
                 
                 // 更新按钮状态
                 this.textContent = translations[currentLang]['gift.selected'];
