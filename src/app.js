@@ -275,26 +275,15 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             showPage(welcomePage);
-        } else {
-            // 用户未登录或是匿名用户
-            if (user && user.isAnonymous) {
-                // 匿名用户登录成功，跳转到欢迎页面
-                sessionData.userId = user.uid;
-                recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
-                    userId: user.uid,
-                    loginMethod: 'anonymous',
-                    timestamp: new Date()
-                });
-                showPage(welcomePage);
-            } else {
-                // 用户未登录，显示登录页面
-                recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
-                    status: 'no_user',
-                    timestamp: new Date()
-                });
-                showPage(loginPage);
-            }
+        } else if (!user) {
+            // 用户未登录，显示登录页面
+            recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
+                status: 'no_user',
+                timestamp: new Date()
+            });
+            showPage(loginPage);
         }
+        // 对于匿名用户，不在这里处理跳转，而是在guestLoginBtn的点击事件中处理
     });
     
     // 添加全局用户行为监听器
@@ -375,6 +364,9 @@ guestLoginBtn.addEventListener('click', function() {
                 sessionData.userId = auth.currentUser.uid;
             }
             console.log('匿名登录成功，用户ID:', sessionData.userId);
+            
+            // 跳转到欢迎页面
+            showPage(welcomePage);
         })
         .catch(function(error) {
             console.error('匿名登录失败:', error);
