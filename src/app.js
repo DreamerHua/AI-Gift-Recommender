@@ -654,10 +654,11 @@ function recordEvent(eventType, eventData = {}) {
 // 判断是否需要立即保存事件
 function shouldSaveEventImmediately(eventType) {
     const immediateEvents = [
-        EVENT_TYPES.SESSION_START,
-        EVENT_TYPES.SESSION_END,
-        EVENT_TYPES.LOGIN_SUCCESS,
-        EVENT_TYPES.ERROR_OCCURRED,
+        // 暂时任何Event都不视为重要事件
+        // EVENT_TYPES.SESSION_START,
+        // EVENT_TYPES.SESSION_END,
+        // EVENT_TYPES.LOGIN_SUCCESS,
+        // EVENT_TYPES.ERROR_OCCURRED,
     ];
     return immediateEvents.includes(eventType);
 }
