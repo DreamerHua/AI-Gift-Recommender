@@ -54,6 +54,59 @@
                     <i class="fa-brands fa-google text-red-500"></i>
                     <span data-i18n="login.google" class="font-semibold text-stone-700">使用 Google 登录</span>
                 </button>
+                
+                <button id="email-login-btn" class="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white border border-stone-300 rounded-full hover:bg-stone-50 transition-colors">
+                    <i class="fa-solid fa-envelope text-blue-500"></i>
+                    <span data-i18n="login.email" class="font-semibold text-stone-700">使用邮箱登录</span>
+                </button>
+                
+                <!-- 邮箱输入表单（隐藏） -->
+                <div id="email-input-form" class="space-y-3 hidden">
+                    <input type="email" id="email-input" placeholder="请输入邮箱地址" class="w-full px-4 py-3 border border-stone-300 rounded-full focus:ring-2 focus:ring-amber-400 focus:border-amber-400 transition">
+                    <div class="flex gap-2">
+                        <button id="send-email-link" class="flex-1 py-3 px-4 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors font-semibold">
+                            <i class="fa-solid fa-paper-plane mr-2"></i>发送登录链接
+                        </button>
+                        <button id="back-to-main" class="flex-1 py-3 px-4 bg-gray-600 text-white rounded-full hover:bg-gray-700 transition-colors font-semibold">
+                            <i class="fa-solid fa-arrow-left mr-2"></i>返回
+                        </button>
+                    </div>
+                    <div id="email-sent-message" class="hidden text-center text-green-600 text-sm">
+                        <i class="fa-solid fa-check-circle mr-1"></i>
+                        登录链接已发送到您的邮箱，请查收并点击链接完成登录
+                    </div>
+                </div>
+                
+                <!-- 电话登录表单 -->
+                <div id="phone-login-form" class="space-y-3 hidden">
+                    <input type="tel" id="phone-input" placeholder="请输入手机号码" class="w-full px-4 py-3 border border-stone-300 rounded-full focus:ring-2 focus:ring-amber-400 focus:border-amber-400 transition">
+                    <button id="send-code" class="w-full py-3 px-4 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors font-semibold">
+                        <i class="fa-solid fa-mobile-screen mr-2"></i>发送验证码
+                    </button>
+                    <!-- reCAPTCHA容器 -->
+                    <div id="recaptcha-container" class="hidden"></div>
+                    <div id="verification-section" class="hidden space-y-3">
+                        <input type="text" id="verification-code" placeholder="请输入验证码" class="w-full px-4 py-3 border border-stone-300 rounded-full focus:ring-2 focus:ring-amber-400 focus:border-amber-400 transition">
+                        <button id="verify-code" class="w-full py-3 px-4 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors font-semibold">
+                            <i class="fa-solid fa-check mr-2"></i>验证登录
+                        </button>
+                    </div>
+                </div>
+                
+                <button id="phone-login-btn" class="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white border border-stone-300 rounded-full hover:bg-stone-50 transition-colors">
+                    <i class="fa-solid fa-mobile-screen text-purple-500"></i>
+                    <span data-i18n="login.phone" class="font-semibold text-stone-700">使用手机登录</span>
+                </button>
+                
+                <div class="relative">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-stone-300"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-2 bg-white text-stone-500">或</span>
+                    </div>
+                </div>
+                
                 <button id="guest-login" class="w-full flex items-center justify-center gap-3 py-3 px-4 bg-stone-100 border border-stone-300 rounded-full hover:bg-stone-200 transition-colors">
                     <i class="fa-solid fa-user text-stone-500"></i>
                     <span data-i18n="login.guest" class="font-semibold text-stone-700">以访客身份继续</span>

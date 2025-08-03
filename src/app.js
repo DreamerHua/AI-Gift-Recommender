@@ -27,6 +27,8 @@ const translations = {
         'login.title': '欢迎回来',
         'login.subtitle': '登录以继续您的灵感之旅',
         'login.google': '使用 Google 登录',
+        'login.email': '使用邮箱登录',
+        'login.phone': '使用手机登录',
         'login.guest': '以访客身份继续',
         'welcome.title': '告别送礼困难症',
         'welcome.subtitle': '让AI用行为科学为你找到最有心意的礼物。',
@@ -78,6 +80,8 @@ const translations = {
         'login.title': 'Welcome Back',
         'login.subtitle': 'Sign in to continue your inspiration journey',
         'login.google': 'Sign in with Google',
+        'login.email': 'Sign in with Email',
+        'login.phone': 'Sign in with Phone',
         'login.guest': 'Continue as Guest',
         'welcome.title': 'Say Goodbye to Gift Dilemmas',
         'welcome.subtitle': 'Let AI find the most thoughtful gifts using behavioral science.',
@@ -217,7 +221,25 @@ const resultsPage = document.getElementById('results-page');
 
 const googleLoginBtn = document.getElementById('google-login');
 const guestLoginBtn = document.getElementById('guest-login');
+const emailLoginBtnMain = document.getElementById('email-login-btn');
+const phoneLoginBtnMain = document.getElementById('phone-login-btn');
+const sendEmailLinkBtn = document.getElementById('send-email-link');
+const backToMainBtn = document.getElementById('back-to-main');
+const sendCodeBtn = document.getElementById('send-code');
+const verifyCodeBtn = document.getElementById('verify-code');
 const startButton = document.getElementById('start-button');
+
+// 登录表单元素
+const emailInputForm = document.getElementById('email-input-form');
+const phoneLoginForm = document.getElementById('phone-login-form');
+const emailInput = document.getElementById('email-input');
+const phoneInput = document.getElementById('phone-input');
+const verificationCodeInput = document.getElementById('verification-code');
+const verificationSection = document.getElementById('verification-section');
+const emailSentMessage = document.getElementById('email-sent-message');
+
+// 全局变量
+let confirmationResult = null; // 用于存储电话验证结果
 
 const stepRelationship = document.getElementById('step-relationship');
 const stepOccasion = document.getElementById('step-occasion');
@@ -242,23 +264,32 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 监听认证状态变化
     auth.onAuthStateChanged(function(user) {
-        if (user) {
-            // 用户已登录
+        if (user && !user.isAnonymous) {
+            // 用户已通过真实方式登录（非匿名）
             sessionData.userId = user.uid;
             
             recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
                 userId: user.uid,
-                loginMethod: user.isAnonymous ? 'anonymous' : 'authenticated',
+                loginMethod: 'authenticated',
                 timestamp: new Date()
             });
             
             showPage(welcomePage);
         } else {
-            // 用户未登录
-            recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
-                status: 'no_user',
-                timestamp: new Date()
-            });
+            // 用户未登录或是匿名用户，都显示登录页面
+            if (user && user.isAnonymous) {
+                sessionData.userId = user.uid;
+                recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
+                    userId: user.uid,
+                    loginMethod: 'anonymous',
+                    timestamp: new Date()
+                });
+            } else {
+                recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
+                    status: 'no_user',
+                    timestamp: new Date()
+                });
+            }
             showPage(loginPage);
         }
     });
@@ -347,6 +378,253 @@ guestLoginBtn.addEventListener('click', function() {
             alert('匿名登录失败: ' + error.message);
         });
 });
+
+// 邮箱登录按钮事件监听
+emailLoginBtnMain.addEventListener('click', function() {
+    // 显示邮箱输入表单，隐藏其他登录选项
+    emailInputForm.classList.remove('hidden');
+    phoneLoginForm.classList.add('hidden');
+    googleLoginBtn.style.display = 'none';
+    emailLoginBtnMain.style.display = 'none';
+    phoneLoginBtnMain.style.display = 'none';
+    guestLoginBtn.style.display = 'none';
+});
+
+// 返回主登录界面
+backToMainBtn.addEventListener('click', function() {
+    // 隐藏邮箱输入表单，显示主登录选项
+    emailInputForm.classList.add('hidden');
+    phoneLoginForm.classList.add('hidden');
+    googleLoginBtn.style.display = 'flex';
+    emailLoginBtnMain.style.display = 'flex';
+    phoneLoginBtnMain.style.display = 'flex';
+    guestLoginBtn.style.display = 'flex';
+    emailSentMessage.classList.add('hidden');
+    emailInput.value = '';
+});
+
+// 发送邮箱登录链接
+sendEmailLinkBtn.addEventListener('click', function() {
+    const email = emailInput.value.trim();
+    
+    if (!email) {
+        alert('请输入邮箱地址');
+        return;
+    }
+    
+    recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
+        method: 'email_link',
+        timestamp: new Date()
+    });
+    
+    // 配置邮箱链接登录设置
+    const actionCodeSettings = {
+        url: window.location.origin + window.location.pathname,
+        handleCodeInApp: true
+    };
+    
+    auth.sendSignInLinkToEmail(email, actionCodeSettings)
+        .then(function() {
+            // 保存邮箱到本地存储
+            window.localStorage.setItem('emailForSignIn', email);
+            
+            // 显示成功消息
+            emailSentMessage.classList.remove('hidden');
+            sendEmailLinkBtn.textContent = '链接已发送';
+            sendEmailLinkBtn.disabled = true;
+            
+            console.log('邮箱登录链接已发送');
+        })
+        .catch(function(error) {
+            recordEvent(EVENT_TYPES.LOGIN_FAILURE, {
+                method: 'email_link',
+                error: error.code,
+                timestamp: new Date()
+            });
+            console.error('发送邮箱登录链接失败:', error);
+            
+            let errorMessage = '发送失败: ';
+            switch(error.code) {
+                case 'auth/invalid-email':
+                    errorMessage += '邮箱格式不正确';
+                    break;
+                case 'auth/too-many-requests':
+                    errorMessage += '请求过于频繁，请稍后再试';
+                    break;
+                default:
+                    errorMessage += error.message;
+            }
+            alert(errorMessage);
+        });
+});
+
+// 手机登录按钮事件监听
+phoneLoginBtnMain.addEventListener('click', function() {
+    // 显示手机登录表单，隐藏其他登录选项
+    phoneLoginForm.classList.remove('hidden');
+    emailInputForm.classList.add('hidden');
+    googleLoginBtn.style.display = 'none';
+    emailLoginBtnMain.style.display = 'none';
+    phoneLoginBtnMain.style.display = 'none';
+    guestLoginBtn.style.display = 'none';
+});
+
+// 发送验证码事件监听
+sendCodeBtn.addEventListener('click', function() {
+    const phoneNumber = phoneInput.value.trim();
+    
+    if (!phoneNumber) {
+        alert('请输入手机号码');
+        return;
+    }
+    
+    // 添加中国区号（如果没有的话）
+    const formattedPhone = phoneNumber.startsWith('+86') ? phoneNumber : '+86' + phoneNumber;
+    
+    recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
+        method: 'phone_send_code',
+        timestamp: new Date()
+    });
+    
+    // 设置reCAPTCHA
+    if (!window.recaptchaVerifier) {
+        window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+            'size': 'normal',
+            'callback': function(response) {
+                console.log('reCAPTCHA验证成功');
+            }
+        });
+        // 显示reCAPTCHA容器
+        document.getElementById('recaptcha-container').classList.remove('hidden');
+    }
+    
+    auth.signInWithPhoneNumber(formattedPhone, window.recaptchaVerifier)
+        .then(function(result) {
+            confirmationResult = result;
+            verificationSection.classList.remove('hidden');
+            sendCodeBtn.textContent = '验证码已发送';
+            sendCodeBtn.disabled = true;
+            console.log('验证码已发送');
+            alert('验证码已发送到您的手机');
+        })
+        .catch(function(error) {
+            recordEvent(EVENT_TYPES.LOGIN_FAILURE, {
+                method: 'phone_send_code',
+                error: error.code,
+                timestamp: new Date()
+            });
+            console.error('发送验证码失败:', error);
+            
+            let errorMessage = '发送验证码失败: ';
+            switch(error.code) {
+                case 'auth/invalid-phone-number':
+                    errorMessage += '手机号格式不正确';
+                    break;
+                case 'auth/too-many-requests':
+                    errorMessage += '请求过于频繁，请稍后再试';
+                    break;
+                default:
+                    errorMessage += error.message;
+            }
+            alert(errorMessage);
+            
+            // 重置reCAPTCHA
+            if (window.recaptchaVerifier) {
+                window.recaptchaVerifier.clear();
+                window.recaptchaVerifier = null;
+            }
+            // 隐藏reCAPTCHA容器
+            document.getElementById('recaptcha-container').classList.add('hidden');
+        });
+});
+
+// 验证码登录事件监听
+verifyCodeBtn.addEventListener('click', function() {
+    const code = verificationCodeInput.value.trim();
+    
+    if (!code) {
+        alert('请输入验证码');
+        return;
+    }
+    
+    if (!confirmationResult) {
+        alert('请先发送验证码');
+        return;
+    }
+    
+    recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
+        method: 'phone_verify',
+        timestamp: new Date()
+    });
+    
+    confirmationResult.confirm(code)
+        .then(function(result) {
+            sessionData.userId = result.user.uid;
+            recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
+                userId: result.user.uid,
+                loginMethod: 'phone',
+                timestamp: new Date()
+            });
+            console.log('手机登录成功，用户ID:', sessionData.userId);
+        })
+        .catch(function(error) {
+            recordEvent(EVENT_TYPES.LOGIN_FAILURE, {
+                method: 'phone_verify',
+                error: error.code,
+                timestamp: new Date()
+            });
+            console.error('验证码验证失败:', error);
+            
+            let errorMessage = '验证失败: ';
+            switch(error.code) {
+                case 'auth/invalid-verification-code':
+                    errorMessage += '验证码错误';
+                    break;
+                case 'auth/code-expired':
+                    errorMessage += '验证码已过期，请重新发送';
+                    break;
+                default:
+                    errorMessage += error.message;
+            }
+            alert(errorMessage);
+        });
+});
+
+// 检查是否是邮箱链接登录
+if (auth.isSignInWithEmailLink(window.location.href)) {
+    let email = window.localStorage.getItem('emailForSignIn');
+    if (!email) {
+        email = window.prompt('请输入您的邮箱地址以完成登录');
+    }
+    
+    if (email) {
+        auth.signInWithEmailLink(email, window.location.href)
+            .then(function(result) {
+                sessionData.userId = result.user.uid;
+                recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
+                    userId: result.user.uid,
+                    loginMethod: 'email_link',
+                    timestamp: new Date()
+                });
+                console.log('邮箱链接登录成功，用户ID:', sessionData.userId);
+                
+                // 清除本地存储的邮箱
+                window.localStorage.removeItem('emailForSignIn');
+                
+                // 清除URL中的登录参数
+                window.history.replaceState({}, document.title, window.location.pathname);
+            })
+            .catch(function(error) {
+                recordEvent(EVENT_TYPES.LOGIN_FAILURE, {
+                    method: 'email_link',
+                    error: error.code,
+                    timestamp: new Date()
+                });
+                console.error('邮箱链接登录失败:', error);
+                alert('登录失败: ' + error.message);
+            });
+    }
+}
 
 // 开始按钮事件监听
 startButton.addEventListener('click', function() {
