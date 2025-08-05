@@ -156,6 +156,43 @@
                     <span data-i18n="step1.opt4" class="font-semibold text-stone-800">家人</span>
                 </button>
             </div>
+            
+            <!-- AI聊天助手 -->
+            <div class="mt-8">
+                <button id="chat-toggle-step1" class="chat-toggle-btn w-full px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-2xl shadow-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-300 transform hover:scale-105">
+                    <i class="fa-solid fa-robot mr-2"></i>
+                    试试与AI深度聊
+                </button>
+                
+                <div id="chat-window-step1" class="chat-window hidden mt-4 bg-white border-2 border-purple-200 rounded-2xl shadow-lg overflow-hidden">
+                    <div class="chat-header bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4">
+                        <h3 class="font-semibold flex items-center">
+                            <i class="fa-solid fa-robot mr-2"></i>
+                            AI礼物助手
+                        </h3>
+                    </div>
+                    
+                    <div class="chat-messages h-64 overflow-y-auto p-4 space-y-3" id="chat-messages-step1">
+                        <div class="ai-message flex items-start space-x-2">
+                            <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                <i class="fa-solid fa-robot text-white text-sm"></i>
+                            </div>
+                            <div class="bg-gray-100 rounded-2xl px-4 py-2 max-w-xs">
+                                <p class="text-sm text-gray-800">你好！我是AI礼物助手，可以帮你分析礼物需求。告诉我你想为谁选礼物吧！</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-input-area p-4 border-t border-gray-200">
+                        <div class="flex space-x-2">
+                            <input type="text" id="chat-input-step1" class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="输入你的想法...">
+                            <button id="chat-send-step1" class="px-4 py-2 bg-purple-500 text-white rounded-full hover:bg-purple-600 transition-colors">
+                                <i class="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- 步骤2：场合 -->
@@ -181,6 +218,43 @@
                     <i class="fa-solid fa-champagne-glasses text-2xl text-yellow-400 mb-3"></i>
                     <span data-i18n="step2.opt4" class="font-semibold text-stone-800">庆祝</span>
                 </button>
+            </div>
+            
+            <!-- AI聊天助手 -->
+            <div class="mt-8">
+                <button id="chat-toggle-step2" class="chat-toggle-btn w-full px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-2xl shadow-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-300 transform hover:scale-105">
+                    <i class="fa-solid fa-robot mr-2"></i>
+                    试试与AI深度聊
+                </button>
+                
+                <div id="chat-window-step2" class="chat-window hidden mt-4 bg-white border-2 border-purple-200 rounded-2xl shadow-lg overflow-hidden">
+                    <div class="chat-header bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4">
+                        <h3 class="font-semibold flex items-center">
+                            <i class="fa-solid fa-robot mr-2"></i>
+                            AI礼物助手
+                        </h3>
+                    </div>
+                    
+                    <div class="chat-messages h-64 overflow-y-auto p-4 space-y-3" id="chat-messages-step2">
+                        <div class="ai-message flex items-start space-x-2">
+                            <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                <i class="fa-solid fa-robot text-white text-sm"></i>
+                            </div>
+                            <div class="bg-gray-100 rounded-2xl px-4 py-2 max-w-xs">
+                                <p class="text-sm text-gray-800">告诉我这是什么场合的礼物？比如生日、纪念日还是其他特殊时刻？</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-input-area p-4 border-t border-gray-200">
+                        <div class="flex space-x-2">
+                            <input type="text" id="chat-input-step2" class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="描述一下场合...">
+                            <button id="chat-send-step2" class="px-4 py-2 bg-purple-500 text-white rounded-full hover:bg-purple-600 transition-colors">
+                                <i class="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -208,6 +282,43 @@
                     <span data-i18n="step3.opt4" class="font-semibold text-stone-800">治愈的</span>
                 </button>
             </div>
+            
+            <!-- AI聊天助手 -->
+            <div class="mt-8">
+                <button id="chat-toggle-step3" class="chat-toggle-btn w-full px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-2xl shadow-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-300 transform hover:scale-105">
+                    <i class="fa-solid fa-robot mr-2"></i>
+                    试试与AI深度聊
+                </button>
+                
+                <div id="chat-window-step3" class="chat-window hidden mt-4 bg-white border-2 border-purple-200 rounded-2xl shadow-lg overflow-hidden">
+                    <div class="chat-header bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4">
+                        <h3 class="font-semibold flex items-center">
+                            <i class="fa-solid fa-robot mr-2"></i>
+                            AI礼物助手
+                        </h3>
+                    </div>
+                    
+                    <div class="chat-messages h-64 overflow-y-auto p-4 space-y-3" id="chat-messages-step3">
+                        <div class="ai-message flex items-start space-x-2">
+                            <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                <i class="fa-solid fa-robot text-white text-sm"></i>
+                            </div>
+                            <div class="bg-gray-100 rounded-2xl px-4 py-2 max-w-xs">
+                                <p class="text-sm text-gray-800">你希望这份礼物传递什么样的感觉？是想给对方惊喜、感动，还是其他情感？</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-input-area p-4 border-t border-gray-200">
+                        <div class="flex space-x-2">
+                            <input type="text" id="chat-input-step3" class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="想传递什么感觉...">
+                            <button id="chat-send-step3" class="px-4 py-2 bg-purple-500 text-white rounded-full hover:bg-purple-600 transition-colors">
+                                <i class="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- 步骤4：性格 -->
@@ -227,6 +338,43 @@
                     <h3 data-i18n="step4.opt2_title" class="font-bold text-lg text-stone-800">随性而为的探险家</h3>
                     <p data-i18n="step4.opt2_desc" class="text-sm text-stone-600 mt-1">享受当下的惊喜，喜欢说走就走的旅行。</p>
                 </button>
+            </div>
+            
+            <!-- AI聊天助手 -->
+            <div class="mt-8">
+                <button id="chat-toggle-step4" class="chat-toggle-btn w-full px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-2xl shadow-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-300 transform hover:scale-105">
+                    <i class="fa-solid fa-robot mr-2"></i>
+                    试试与AI深度聊
+                </button>
+                
+                <div id="chat-window-step4" class="chat-window hidden mt-4 bg-white border-2 border-purple-200 rounded-2xl shadow-lg overflow-hidden">
+                    <div class="chat-header bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4">
+                        <h3 class="font-semibold flex items-center">
+                            <i class="fa-solid fa-robot mr-2"></i>
+                            AI礼物助手
+                        </h3>
+                    </div>
+                    
+                    <div class="chat-messages h-64 overflow-y-auto p-4 space-y-3" id="chat-messages-step4">
+                        <div class="ai-message flex items-start space-x-2">
+                            <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                <i class="fa-solid fa-robot text-white text-sm"></i>
+                            </div>
+                            <div class="bg-gray-100 rounded-2xl px-4 py-2 max-w-xs">
+                                <p class="text-sm text-gray-800">描述一下TA的性格特点吧！比如是喜欢计划的人，还是比较随性的？</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-input-area p-4 border-t border-gray-200">
+                        <div class="flex space-x-2">
+                            <input type="text" id="chat-input-step4" class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="描述TA的性格...">
+                            <button id="chat-send-step4" class="px-4 py-2 bg-purple-500 text-white rounded-full hover:bg-purple-600 transition-colors">
+                                <i class="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -253,6 +401,43 @@
                     <i class="fa-solid fa-gift text-2xl text-red-500 mb-3"></i>
                     <span data-i18n="step5.opt4" class="font-semibold text-stone-800 text-center">收到礼物</span>
                 </button>
+            </div>
+            
+            <!-- AI聊天助手 -->
+            <div class="mt-8">
+                <button id="chat-toggle-step5" class="chat-toggle-btn w-full px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-2xl shadow-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-300 transform hover:scale-105">
+                    <i class="fa-solid fa-robot mr-2"></i>
+                    试试与AI深度聊
+                </button>
+                
+                <div id="chat-window-step5" class="chat-window hidden mt-4 bg-white border-2 border-purple-200 rounded-2xl shadow-lg overflow-hidden">
+                    <div class="chat-header bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4">
+                        <h3 class="font-semibold flex items-center">
+                            <i class="fa-solid fa-robot mr-2"></i>
+                            AI礼物助手
+                        </h3>
+                    </div>
+                    
+                    <div class="chat-messages h-64 overflow-y-auto p-4 space-y-3" id="chat-messages-step5">
+                        <div class="ai-message flex items-start space-x-2">
+                            <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                <i class="fa-solid fa-robot text-white text-sm"></i>
+                            </div>
+                            <div class="bg-gray-100 rounded-2xl px-4 py-2 max-w-xs">
+                                <p class="text-sm text-gray-800">TA最喜欢哪种表达爱意的方式？比如听到赞美的话语，还是收到贴心的礼物？</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-input-area p-4 border-t border-gray-200">
+                        <div class="flex space-x-2">
+                            <input type="text" id="chat-input-step5" class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="描述TA的爱的语言...">
+                            <button id="chat-send-step5" class="px-4 py-2 bg-purple-500 text-white rounded-full hover:bg-purple-600 transition-colors">
+                                <i class="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
@@ -300,6 +485,20 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    
+    <!-- 引入Google Generative AI SDK -->
+    <script type="importmap">
+    {
+        "imports": {
+            "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+    }
+    </script>
+    <script type="module">
+        import { GoogleGenerativeAI } from '@google/generative-ai';
+        window.GoogleGenerativeAI = GoogleGenerativeAI;
+    </script>
+    
     <script src="./app.js"></script>
 </body>
 </html>

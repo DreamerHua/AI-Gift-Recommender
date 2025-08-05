@@ -179,6 +179,7 @@ const EVENT_TYPES = {
     FEEDBACK_SUBMITTED: 'feedback_submitted',  // 用户提交反馈
     LANGUAGE_CHANGED: 'language_changed',      // 切换语言
     ERROR_OCCURRED: 'error_occurred',          // 发生错误
+    CHAT_WITH_AI: 'chat_with_ai',        // 用户与AI聊天交互
 };
 
 // 模拟的礼物推荐数据
@@ -945,7 +946,9 @@ function recordEvent(eventType, eventData = {}) {
 // 判断是否需要立即保存事件
 function shouldSaveEventImmediately(eventType) {
     const immediateEvents = [
-        // 暂时任何Event都不视为重要事件
+        // 聊天记录需要立即保存
+        EVENT_TYPES.CHAT_WITH_AI,
+        // 暂时其他Event都不视为重要事件
         // EVENT_TYPES.SESSION_START,
         // EVENT_TYPES.SESSION_END,
         // EVENT_TYPES.LOGIN_SUCCESS,
@@ -1391,3 +1394,390 @@ function applyTranslations() {
         }
     });
 }
+
+// ==================== 聊天窗口功能 ====================
+
+// 聊天窗口状态管理
+const chatState = {
+    activeWindows: new Set(),
+    conversations: {},
+    // 为每个步骤存储聊天历史
+    chatHistories: {
+        1: [],
+        2: [],
+        3: [],
+        4: [],
+        5: []
+    }
+};
+
+// 初始化聊天窗口事件监听器
+function initializeChatWindows() {
+    // 为每个步骤的聊天窗口添加事件监听器
+    for (let i = 1; i <= 5; i++) {
+        const toggleBtn = document.getElementById(`chat-toggle-step${i}`);
+        const chatWindow = document.getElementById(`chat-window-step${i}`);
+        const sendBtn = document.getElementById(`chat-send-step${i}`);
+        const input = document.getElementById(`chat-input-step${i}`);
+        
+        if (toggleBtn && chatWindow && sendBtn && input) {
+            // 折叠/展开聊天窗口
+            toggleBtn.addEventListener('click', () => toggleChatWindow(i));
+            
+            // 发送消息
+            sendBtn.addEventListener('click', () => sendChatMessage(i));
+            
+            // 回车发送消息
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendChatMessage(i);
+                }
+            });
+            
+            // 初始化对话记录
+            if (!chatState.conversations[`step${i}`]) {
+                chatState.conversations[`step${i}`] = [];
+            }
+        }
+    }
+}
+
+// 折叠/展开聊天窗口
+function toggleChatWindow(stepNumber) {
+    const chatWindow = document.getElementById(`chat-window-step${stepNumber}`);
+    const toggleBtn = document.getElementById(`chat-toggle-step${stepNumber}`);
+    
+    if (chatWindow.classList.contains('hidden')) {
+        // 展开窗口
+        chatWindow.classList.remove('hidden');
+        chatState.activeWindows.add(`step${stepNumber}`);
+        toggleBtn.innerHTML = '<i class="fa-solid fa-robot mr-2"></i>收起AI聊天';
+        
+        // 记录事件
+        recordEvent('chat_window_opened', {
+            step: stepNumber,
+            timestamp: new Date().toISOString()
+        });
+    } else {
+        // 折叠窗口
+        chatWindow.classList.add('hidden');
+        chatState.activeWindows.delete(`step${stepNumber}`);
+        toggleBtn.innerHTML = '<i class="fa-solid fa-robot mr-2"></i>试试与AI深度聊';
+        
+        // 记录事件
+        recordEvent('chat_window_closed', {
+            step: stepNumber,
+            timestamp: new Date().toISOString()
+        });
+    }
+}
+
+// 发送聊天消息
+async function sendChatMessage(stepNumber) {
+    const input = document.getElementById(`chat-input-step${stepNumber}`);
+    const messagesContainer = document.getElementById(`chat-messages-step${stepNumber}`);
+    
+    const message = input.value.trim();
+    if (!message) return;
+    
+    // 清空输入框
+    input.value = '';
+    
+    // 添加用户消息到界面
+    addMessageToChat(stepNumber, message, 'user');
+    
+    // 显示加载状态
+    const loadingMessageId = addLoadingMessage(stepNumber);
+    
+    try {
+        // 调用AI API获取回复
+        const aiResponse = await callAIAPI(message, stepNumber);
+        
+        // 移除加载状态
+        removeLoadingMessage(stepNumber, loadingMessageId);
+        
+        // 添加AI回复到界面
+        addMessageToChat(stepNumber, aiResponse, 'ai');
+        
+        // 保存对话记录到Firebase
+        await saveChatToFirestore(stepNumber, message, aiResponse);
+        
+    } catch (error) {
+        console.error('AI回复失败:', error);
+        
+        // 移除加载状态
+        removeLoadingMessage(stepNumber, loadingMessageId);
+        
+        // 显示错误消息
+        addMessageToChat(stepNumber, '抱歉，我现在无法回复。请稍后再试。', 'ai');
+        
+        // 记录错误事件
+        recordEvent('chat_error', {
+            step: stepNumber,
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+}
+
+// 添加消息到聊天界面
+function addMessageToChat(stepNumber, message, sender) {
+    const messagesContainer = document.getElementById(`chat-messages-step${stepNumber}`);
+    const messageDiv = document.createElement('div');
+    const timestamp = new Date().toISOString();
+    
+    if (sender === 'user') {
+        messageDiv.className = 'user-message flex items-start space-x-2 justify-end';
+        messageDiv.innerHTML = `
+            <div class="bg-purple-500 text-white rounded-2xl px-4 py-2 max-w-xs">
+                <p class="text-sm">${escapeHtml(message)}</p>
+            </div>
+            <div class="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center flex-shrink-0">
+                <i class="fa-solid fa-user text-gray-600 text-sm"></i>
+            </div>
+        `;
+    } else {
+        messageDiv.className = 'ai-message flex items-start space-x-2';
+        messageDiv.innerHTML = `
+            <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <i class="fa-solid fa-robot text-white text-sm"></i>
+            </div>
+            <div class="bg-gray-100 rounded-2xl px-4 py-2 max-w-xs">
+                <p class="text-sm text-gray-800">${escapeHtml(message)}</p>
+            </div>
+        `;
+    }
+    
+    messagesContainer.appendChild(messageDiv);
+    
+    // 滚动到底部
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    // 保存到本地对话记录
+    chatState.conversations[`step${stepNumber}`].push({
+        message,
+        sender,
+        timestamp
+    });
+}
+
+// 添加加载消息
+function addLoadingMessage(stepNumber) {
+    const messagesContainer = document.getElementById(`chat-messages-step${stepNumber}`);
+    const loadingDiv = document.createElement('div');
+    const loadingId = `loading-${Date.now()}`;
+    
+    loadingDiv.id = loadingId;
+    loadingDiv.className = 'ai-message flex items-start space-x-2';
+    loadingDiv.innerHTML = `
+        <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+            <i class="fa-solid fa-robot text-white text-sm"></i>
+        </div>
+        <div class="bg-gray-100 rounded-2xl px-4 py-2 max-w-xs">
+            <div class="flex items-center space-x-2">
+                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500"></div>
+                <p class="text-sm text-gray-600">消息正在处理中...</p>
+            </div>
+        </div>
+    `;
+    
+    messagesContainer.appendChild(loadingDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    return loadingId;
+}
+
+// 移除加载消息
+function removeLoadingMessage(stepNumber, loadingId) {
+    const loadingElement = document.getElementById(loadingId);
+    if (loadingElement) {
+        loadingElement.remove();
+    }
+}
+
+// 调用AI API
+async function callAIAPI(message, stepNumber) {
+    // 构建上下文信息
+    const context = buildChatContext(stepNumber);
+    
+    try {
+        // 检查Google AI SDK是否可用
+        if (typeof window.GoogleGenerativeAI === 'undefined' && typeof GoogleGenerativeAI === 'undefined') {
+            throw new Error('Google Generative AI SDK未加载');
+        }
+        
+        // 初始化Gemini API
+        const API_KEY = "AIzaSyBEuFVK35-OtMCZfzxQHdLpGljR3DKSqFA";
+        const GoogleAI = window.GoogleGenerativeAI || GoogleGenerativeAI;
+        const genAI = new GoogleAI(API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+        // 构建提示词
+        const prompt = `
+            你是一个专业的礼物推荐助手。请根据以下信息提供建议：
+            ${message}
+            ${buildChatContext(stepNumber)}
+            
+            请用简短友好的语气回复，并给出具体的建议。
+        `;
+
+        // 调用Gemini API
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const aiResponse = response.text();
+
+        // 验证响应内容
+        if (!aiResponse) {
+            throw new Error('Gemini API返回空响应');
+        }
+
+        return aiResponse.trim();
+
+    } catch (error) {
+        console.error('Gemini API调用失败:', error);
+        
+        // API调用失败时返回备选响应
+        return generateMockAIResponse(message, stepNumber);
+    }
+}
+
+// 构建聊天上下文
+function buildChatContext(stepNumber) {
+    const stepNames = {
+        1: '选择关系类型',
+        2: '选择场合',
+        3: '选择意图',
+        4: '了解性格',
+        5: '了解爱的语言'
+    };
+    
+    let context = `当前步骤：${stepNames[stepNumber]}。`;
+    
+    // 添加已有的答案作为上下文
+    if (sessionData.answers.relationship) {
+        context += `关系：${sessionData.answers.relationship}。`;
+    }
+    if (sessionData.answers.occasion) {
+        context += `场合：${sessionData.answers.occasion}。`;
+    }
+    if (sessionData.answers.intent) {
+        context += `意图：${sessionData.answers.intent}。`;
+    }
+    if (sessionData.answers.personality) {
+        context += `性格：${sessionData.answers.personality}。`;
+    }
+    if (sessionData.answers.loveLanguage) {
+        context += `爱的语言：${sessionData.answers.loveLanguage}。`;
+    }
+    
+    return context;
+}
+
+// 生成模拟AI回复（作为备选方案）
+function generateMockAIResponse(message, stepNumber) {
+    const responses = {
+        1: [
+            '了解你们的关系很重要！不同的关系需要不同程度的亲密感。',
+            '选择合适的关系类型能帮我更好地为你推荐礼物。',
+            '每种关系都有其特殊的表达方式，告诉我更多吧！'
+        ],
+        2: [
+            '场合决定了礼物的风格和意义，选择对了事半功倍！',
+            '不同的场合需要不同的礼物策略，让我来帮你分析。',
+            '了解场合能让礼物更有针对性和意义。'
+        ],
+        3: [
+            '你想传达的感觉很重要，这决定了礼物的情感价值。',
+            '每种感觉都有对应的礼物类型，让我为你详细分析。',
+            '明确意图能让礼物更有感染力和表达力。'
+        ],
+        4: [
+            '了解TA的性格能帮我推荐最合适的礼物类型。',
+            '性格决定了喜好，这是选择礼物的重要依据。',
+            '每种性格都有其偏爱的礼物风格，告诉我更多细节吧！'
+        ],
+        5: [
+            '爱的语言是表达情感的方式，选对了能让礼物更有意义。',
+            '了解TA接受爱的方式，能让你的心意更好地传达。',
+            '每个人感受爱的方式不同，这很重要！'
+        ]
+    };
+    
+    const stepResponses = responses[stepNumber] || responses[1];
+    return stepResponses[Math.floor(Math.random() * stepResponses.length)];
+}
+
+// 保存聊天记录到Firebase（使用事件记录机制）
+async function saveChatToFirestore(stepNumber, userMessage, aiResponse) {
+    if (!sessionData.userId || !sessionData.sessionId) {
+        console.warn('用户未登录或会话未创建，无法保存聊天记录');
+        return;
+    }
+    
+    try {
+        // 创建聊天交互记录
+        const chatInteraction = {
+            user_message: userMessage,
+            ai_response: aiResponse,
+            timestamp: new Date().toISOString(),
+            context: buildChatContext(stepNumber)
+        };
+        
+        // 添加到本地聊天历史
+        if (!chatState.chatHistories[stepNumber]) {
+            chatState.chatHistories[stepNumber] = [];
+        }
+        chatState.chatHistories[stepNumber].push(chatInteraction);
+        
+        // 获取当前步骤的完整聊天历史
+        const currentStepChatHistory = [...chatState.chatHistories[stepNumber]];
+        
+        // 计算总交互次数
+        const totalInteractions = Object.values(chatState.chatHistories)
+            .reduce((total, stepHistory) => total + stepHistory.length, 0);
+        
+        // 使用事件记录机制保存聊天记录
+        recordEvent(EVENT_TYPES.CHAT_WITH_AI, {
+            step: stepNumber,
+            chat_history: currentStepChatHistory,
+            current_interaction: chatInteraction,
+            total_interactions: totalInteractions,
+            session_context: {
+                answers: sessionData.answers,
+                current_step: stepNumber,
+                language: currentLang
+            }
+        });
+        
+        console.log(`聊天记录已保存 - 步骤${stepNumber}，总交互次数: ${totalInteractions}`);
+        
+    } catch (error) {
+        console.error('保存聊天记录失败:', error);
+        // 记录错误事件
+        recordEvent(EVENT_TYPES.ERROR_OCCURRED, {
+            error_type: 'chat_save_failed',
+            step: stepNumber,
+            error_message: error.message,
+            user_message: userMessage,
+            ai_response: aiResponse
+        });
+    }
+}
+
+// HTML转义函数
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+// 在页面加载完成后初始化聊天窗口
+document.addEventListener('DOMContentLoaded', function() {
+    // 延迟初始化，确保所有元素都已加载
+    setTimeout(initializeChatWindows, 100);
+});
