@@ -21,6 +21,96 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 const provider = new firebase.auth.GoogleAuthProvider();
 
+// 维度配置系统 - 可扩展的礼物推荐维度定义
+const DIMENSION_CONFIG = {
+    // 维度定义
+    dimensions: {
+        relationship: {
+            id: 'relationship',
+            name: '关系类型',
+            description: '了解您与收礼人的关系',
+            priority: 1,
+            required: true,
+            dataType: 'single_choice',
+            options: [
+                { value: 'partner', label: '情侣', weight: 1.0 },
+                { value: 'friend', label: '好朋友', weight: 0.8 },
+                { value: 'colleague', label: '同事', weight: 0.6 },
+                { value: 'family', label: '家人', weight: 0.9 }
+            ]
+        },
+        occasion: {
+            id: 'occasion',
+            name: '场合',
+            description: '了解送礼的具体场合',
+            priority: 2,
+            required: true,
+            dataType: 'single_choice',
+            options: [
+                { value: 'birthday', label: '生日', weight: 1.0 },
+                { value: 'anniversary', label: '纪念日', weight: 0.9 },
+                { value: 'gratitude', label: '表达感谢', weight: 0.7 },
+                { value: 'celebration', label: '庆祝', weight: 0.8 }
+            ]
+        },
+        intent: {
+            id: 'intent',
+            name: '情感意图',
+            description: '您希望礼物传递的感觉',
+            priority: 3,
+            required: true,
+            dataType: 'single_choice',
+            options: [
+                { value: 'surprise', label: '惊喜的', weight: 1.0 },
+                { value: 'touching', label: '感动的', weight: 0.9 },
+                { value: 'fun', label: '有趣的', weight: 0.8 },
+                { value: 'healing', label: '治愈的', weight: 0.7 }
+            ]
+        },
+        personality: {
+            id: 'personality',
+            name: '性格特征',
+            description: '收礼人的性格类型',
+            priority: 4,
+            required: true,
+            dataType: 'single_choice',
+            options: [
+                { value: 'planner', label: '深思熟虑的计划者', description: '喜欢提前规划，享受一切尽在掌握的感觉', weight: 1.0 },
+                { value: 'adventurer', label: '随性而为的探险家', description: '享受当下的惊喜，喜欢说走就走的旅行', weight: 0.9 }
+            ]
+        },
+        loveLanguage: {
+            id: 'loveLanguage',
+            name: '爱的语言',
+            description: 'TA最喜欢感受爱的方式',
+            priority: 5,
+            required: true,
+            dataType: 'single_choice',
+            options: [
+                { value: 'words', label: '肯定的言语', weight: 0.8 },
+                { value: 'time', label: '精心的时刻', weight: 0.9 },
+                { value: 'service', label: '服务的行动', weight: 0.7 },
+                { value: 'gifts', label: '收到礼物', weight: 1.0 }
+            ]
+        }
+    },
+    
+    // 维度完整性评估配置
+    completeness: {
+        required_dimensions: ['relationship', 'occasion', 'intent'],
+        optional_dimensions: ['personality', 'loveLanguage'],
+        minimum_score: 0.6  // 最低完整性分数
+    },
+    
+    // Agent行为配置
+    agent: {
+        conversation_style: 'natural_guided',  // 自然引导式
+        max_questions_per_dimension: 3,        // 每个维度最多问3个问题
+        context_memory_turns: 10,              // 记住最近10轮对话
+        fallback_to_direct_questions: true     // 是否允许回退到直接问题
+    }
+};
+
 // 多语言支持
 const translations = {
     'zh': {
@@ -159,6 +249,23 @@ let sessionData = {
         scrollCount: 0,
         languageSwitches: 0,
         backButtonUsage: 0
+    },
+    // 新增：维度追踪系统
+    dimensions: {
+        collected: {},           // 已收集的维度信息 {dimensionId: {value, confidence, source, timestamp}}
+        completeness: 0,         // 完整性分数 (0-1)
+        missing: [],             // 缺失的维度列表
+        inProgress: null,        // 当前正在收集的维度
+        extractedFromChat: {}    // 从聊天中提取的信息
+    },
+    // 新增：Agent状态管理
+    agent: {
+        conversationTurns: 0,           // 对话轮次
+        currentStrategy: 'open_ended',   // 当前对话策略
+        systemMessage: null,             // 系统消息模板
+        contextHistory: [],              // 上下文历史
+        lastDimensionUpdate: null,       // 最后一次维度更新时间
+        needsRecommendation: false       // 是否需要生成推荐
     }
 };
 
@@ -256,12 +363,56 @@ const submitFeedbackBtn = document.getElementById('submit-feedback');
 const langZhBtn = document.getElementById('lang-zh');
 const langEnBtn = document.getElementById('lang-en');
 
+// 初始化维度配置系统
+function initializeDimensionSystem() {
+    // 重置维度状态
+    sessionData.dimensions = {
+        collected: {},
+        completeness: 0,
+        missing: [],
+        inProgress: null,
+        extractedFromChat: {}
+    };
+    
+    // 初始化所有维度
+    Object.values(DIMENSION_CONFIG.dimensions).forEach(dim => {
+        sessionData.dimensions.collected[dim.id] = {
+            value: null,
+            confidence: 0,
+            source: null,
+            attempts: 0,
+            lastAttempt: null
+        };
+    });
+    
+    // 重置Agent状态
+    sessionData.agent = {
+        conversationTurns: 0,
+        currentStrategy: 'open_ended',
+        systemMessage: null,
+        contextHistory: [],
+        lastDimensionUpdate: null,
+        needsRecommendation: false
+    };
+    
+    // 评估初始完整性
+    assessDimensionCompleteness();
+    
+    console.log('维度配置系统已初始化', {
+        dimensions: Object.keys(sessionData.dimensions.collected),
+        completeness: sessionData.dimensions.completeness
+    });
+}
+
 // 初始化页面
 document.addEventListener('DOMContentLoaded', function() {
     console.log('页面加载完成');
     
     // 应用当前语言
     applyTranslations();
+    
+    // 初始化维度配置系统
+    initializeDimensionSystem();
     
     // 监听认证状态变化
     auth.onAuthStateChanged(function(user) {
@@ -1486,6 +1637,23 @@ async function sendChatMessage(stepNumber) {
     // 添加用户消息到界面
     addMessageToChat(stepNumber, message, 'user');
     
+    // 从用户消息中提取维度信息
+    const extractedDimensions = extractDimensionsFromMessage(message, stepNumber);
+    
+    // 更新维度信息
+    Object.entries(extractedDimensions).forEach(([dimId, info]) => {
+        updateDimensionInfo(dimId, info.value, info.confidence, info.source);
+    });
+    
+    // 添加到上下文历史
+    sessionData.agent.contextHistory.push({
+        role: 'user',
+        content: message,
+        timestamp: new Date(),
+        stepNumber: stepNumber,
+        extractedDimensions: extractedDimensions
+    });
+    
     // 显示加载状态
     const loadingMessageId = addLoadingMessage(stepNumber);
     
@@ -1499,8 +1667,26 @@ async function sendChatMessage(stepNumber) {
         // 添加AI回复到界面
         addMessageToChat(stepNumber, aiResponse, 'ai');
         
+        // 添加AI回复到上下文历史
+        sessionData.agent.contextHistory.push({
+            role: 'assistant',
+            content: aiResponse,
+            timestamp: new Date(),
+            stepNumber: stepNumber
+        });
+        
         // 保存对话记录到Firebase
         await saveChatToFirestore(stepNumber, message, aiResponse);
+        
+        // 记录聊天事件
+        recordEvent(EVENT_TYPES.CHAT_WITH_AI, {
+            stepNumber: stepNumber,
+            userMessage: message,
+            aiResponse: aiResponse,
+            extractedDimensions: extractedDimensions,
+            completeness: sessionData.dimensions.completeness,
+            timestamp: new Date().toISOString()
+        });
         
     } catch (error) {
         console.error('AI回复失败:', error);
@@ -1508,13 +1694,26 @@ async function sendChatMessage(stepNumber) {
         // 移除加载状态
         removeLoadingMessage(stepNumber, loadingMessageId);
         
+        // 根据错误类型显示不同的错误消息
+        let errorMessage = '抱歉，我现在无法回复。请稍后再试。';
+        
+        if (error.message.includes('503') || error.message.includes('overloaded')) {
+            errorMessage = '服务器目前比较繁忙，我已经尝试了多次重试。请稍等片刻再试，或者您可以继续与我对话。';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+            errorMessage = '网络连接似乎有问题，请检查您的网络连接后再试。';
+        } else if (error.message.includes('API')) {
+            errorMessage = 'AI服务暂时不可用，请稍后再试。您也可以继续浏览其他功能。';
+        }
+        
         // 显示错误消息
-        addMessageToChat(stepNumber, '抱歉，我现在无法回复。请稍后再试。', 'ai');
+        addMessageToChat(stepNumber, errorMessage, 'ai');
         
         // 记录错误事件
-        recordEvent('chat_error', {
+        recordEvent(EVENT_TYPES.ERROR_OCCURRED, {
             step: stepNumber,
             error: error.message,
+            errorType: error.message.includes('503') ? 'server_overload' : 
+                      error.message.includes('network') ? 'network_error' : 'api_error',
             timestamp: new Date().toISOString()
         });
     }
@@ -1596,9 +1795,9 @@ function removeLoadingMessage(stepNumber, loadingId) {
 }
 
 // 调用AI API
-async function callAIAPI(message, stepNumber) {
-    // 构建上下文信息
-    const context = buildChatContext(stepNumber);
+async function callAIAPI(message, stepNumber, retryCount = 0) {
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1秒
     
     try {
         // 检查Google AI SDK是否可用
@@ -1610,16 +1809,32 @@ async function callAIAPI(message, stepNumber) {
         const API_KEY = "AIzaSyBEuFVK35-OtMCZfzxQHdLpGljR3DKSqFA";
         const GoogleAI = window.GoogleGenerativeAI || GoogleGenerativeAI;
         const genAI = new GoogleAI(API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-1.5-flash",
+            generationConfig: {
+                temperature: 0.7,
+                topK: 40,
+                topP: 0.95,
+                maxOutputTokens: 1024,
+            }
+        });
 
+        // 构建上下文信息
+        const context = buildChatContext(stepNumber);
+        
         // 构建提示词
         const prompt = `
-            你是一个专业的礼物推荐助手。请根据以下信息提供建议：
-            ${message}
-            ${buildChatContext(stepNumber)}
-            
-            请用简短友好的语气回复，并给出具体的建议。
+你是一个专业的礼物推荐助手。请根据以下信息提供建议：
+
+用户消息：${message}
+
+${context.fullContext}
+
+请用简短友好的语气回复，并给出具体的建议。如果用户提到了具体的关系、场合、情感意图等信息，请记住这些信息并在后续对话中使用。
         `;
+
+        console.log('发送给AI的提示词:', prompt);
+        console.log('重试次数:', retryCount);
 
         // 调用Gemini API
         const result = await model.generateContent(prompt);
@@ -1631,46 +1846,83 @@ async function callAIAPI(message, stepNumber) {
             throw new Error('Gemini API返回空响应');
         }
 
+        console.log('AI回复:', aiResponse);
         return aiResponse.trim();
 
     } catch (error) {
-        console.error('Gemini API调用失败:', error);
+        console.error(`Gemini API调用失败 (尝试 ${retryCount + 1}/${maxRetries + 1}):`, error);
+        
+        // 检查是否是503错误（服务过载）或网络错误，且还有重试次数
+        if (retryCount < maxRetries && 
+            (error.message.includes('503') || 
+             error.message.includes('overloaded') || 
+             error.message.includes('fetch') ||
+             error.message.includes('network'))) {
+            
+            console.log(`等待 ${retryDelay * (retryCount + 1)}ms 后重试...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay * (retryCount + 1)));
+            return callAIAPI(message, stepNumber, retryCount + 1);
+        }
+        
+        // 记录错误事件
+        recordEvent(EVENT_TYPES.ERROR_OCCURRED, {
+            error: error.message,
+            stepNumber: stepNumber,
+            retryCount: retryCount,
+            timestamp: new Date().toISOString()
+        });
         
         // API调用失败时返回备选响应
         return generateMockAIResponse(message, stepNumber);
     }
 }
 
-// 构建聊天上下文
+// 构建聊天上下文（使用维度配置系统和会话持续策略）
 function buildChatContext(stepNumber) {
-    const stepNames = {
-        1: '选择关系类型',
-        2: '选择场合',
-        3: '选择意图',
-        4: '了解性格',
-        5: '了解爱的语言'
+    // 生成或更新系统消息
+    const systemMessage = generateSystemMessage();
+    
+    // 构建动态上下文
+    let dynamicContext = '';
+    
+    // 添加已收集的维度信息
+    const collected = sessionData.dimensions.collected;
+    if (Object.keys(collected).length > 0) {
+        dynamicContext += '\n**已了解的信息：**\n';
+        Object.entries(collected).forEach(([dimId, info]) => {
+            const dimension = DIMENSION_CONFIG.dimensions[dimId];
+            if (dimension) {
+                dynamicContext += `- ${dimension.name}：${info.label} (置信度: ${Math.round(info.confidence * 100)}%)\n`;
+            }
+        });
+    }
+    
+    // 添加最近的对话历史
+    const recentHistory = sessionData.agent.contextHistory.slice(-DIMENSION_CONFIG.agent.context_memory_turns);
+    if (recentHistory.length > 0) {
+        dynamicContext += '\n**最近对话：**\n';
+        recentHistory.forEach((turn, index) => {
+            dynamicContext += `${turn.role}: ${turn.content}\n`;
+        });
+    }
+    
+    // 添加当前策略指导
+    const nextDimension = getNextDimension();
+    if (nextDimension) {
+        dynamicContext += `\n**当前重点：**\n重点了解${nextDimension.name}（${nextDimension.description}）\n`;
+    } else {
+        dynamicContext += '\n**当前重点：**\n信息收集完成，可以提供礼物推荐\n';
+    }
+    
+    // 更新Agent状态
+    sessionData.agent.systemMessage = systemMessage;
+    sessionData.agent.conversationTurns++;
+    
+    return {
+        systemMessage: systemMessage,
+        dynamicContext: dynamicContext,
+        fullContext: systemMessage + dynamicContext
     };
-    
-    let context = `当前步骤：${stepNames[stepNumber]}。`;
-    
-    // 添加已有的答案作为上下文
-    if (sessionData.answers.relationship) {
-        context += `关系：${sessionData.answers.relationship}。`;
-    }
-    if (sessionData.answers.occasion) {
-        context += `场合：${sessionData.answers.occasion}。`;
-    }
-    if (sessionData.answers.intent) {
-        context += `意图：${sessionData.answers.intent}。`;
-    }
-    if (sessionData.answers.personality) {
-        context += `性格：${sessionData.answers.personality}。`;
-    }
-    if (sessionData.answers.loveLanguage) {
-        context += `爱的语言：${sessionData.answers.loveLanguage}。`;
-    }
-    
-    return context;
 }
 
 // 生成模拟AI回复（作为备选方案）
@@ -1705,6 +1957,185 @@ function generateMockAIResponse(message, stepNumber) {
     
     const stepResponses = responses[stepNumber] || responses[1];
     return stepResponses[Math.floor(Math.random() * stepResponses.length)];
+}
+
+// ===== 维度管理系统 =====
+
+// 评估维度收集完整性
+function assessDimensionCompleteness() {
+    const config = DIMENSION_CONFIG;
+    const collected = sessionData.dimensions.collected;
+    
+    let totalWeight = 0;
+    let collectedWeight = 0;
+    let missing = [];
+    
+    // 计算必需维度
+    config.completeness.required_dimensions.forEach(dimId => {
+        const dimension = config.dimensions[dimId];
+        if (dimension) {
+            totalWeight += 1.0;
+            if (collected[dimId] && collected[dimId].confidence > 0.5) {
+                collectedWeight += collected[dimId].confidence;
+            } else {
+                missing.push(dimId);
+            }
+        }
+    });
+    
+    // 计算可选维度（权重较低）
+    config.completeness.optional_dimensions.forEach(dimId => {
+        const dimension = config.dimensions[dimId];
+        if (dimension) {
+            totalWeight += 0.5;
+            if (collected[dimId] && collected[dimId].confidence > 0.5) {
+                collectedWeight += collected[dimId].confidence * 0.5;
+            } else {
+                missing.push(dimId);
+            }
+        }
+    });
+    
+    const completeness = totalWeight > 0 ? collectedWeight / totalWeight : 0;
+    
+    // 更新会话数据
+    sessionData.dimensions.completeness = completeness;
+    sessionData.dimensions.missing = missing;
+    
+    return {
+        completeness,
+        missing,
+        isComplete: completeness >= config.completeness.minimum_score
+    };
+}
+
+// 从用户消息中提取维度信息
+function extractDimensionsFromMessage(message, stepNumber = null) {
+    const config = DIMENSION_CONFIG;
+    const extracted = {};
+    
+    // 简单的关键词匹配提取（后续可以用AI增强）
+    Object.keys(config.dimensions).forEach(dimId => {
+        const dimension = config.dimensions[dimId];
+        
+        dimension.options.forEach(option => {
+            // 检查消息中是否包含选项标签
+            if (message.toLowerCase().includes(option.label.toLowerCase()) ||
+                message.toLowerCase().includes(option.value.toLowerCase())) {
+                
+                extracted[dimId] = {
+                    value: option.value,
+                    label: option.label,
+                    confidence: 0.8,  // 基于关键词匹配的置信度
+                    source: 'chat_extraction',
+                    timestamp: new Date(),
+                    stepNumber: stepNumber
+                };
+            }
+        });
+    });
+    
+    return extracted;
+}
+
+// 更新维度信息
+function updateDimensionInfo(dimensionId, value, confidence = 1.0, source = 'user_input') {
+    const config = DIMENSION_CONFIG;
+    const dimension = config.dimensions[dimensionId];
+    
+    if (!dimension) {
+        console.warn(`Unknown dimension: ${dimensionId}`);
+        return false;
+    }
+    
+    // 查找对应的选项
+    const option = dimension.options.find(opt => opt.value === value);
+    if (!option) {
+        console.warn(`Unknown option ${value} for dimension ${dimensionId}`);
+        return false;
+    }
+    
+    // 更新维度信息
+    sessionData.dimensions.collected[dimensionId] = {
+        value: option.value,
+        label: option.label,
+        confidence: confidence,
+        source: source,
+        timestamp: new Date(),
+        weight: option.weight
+    };
+    
+    // 更新Agent状态
+    sessionData.agent.lastDimensionUpdate = new Date();
+    
+    // 重新评估完整性
+    const assessment = assessDimensionCompleteness();
+    
+    // 记录维度更新事件
+    recordEvent(EVENT_TYPES.STEP_COMPLETE, {
+        dimensionId: dimensionId,
+        value: value,
+        confidence: confidence,
+        source: source,
+        completeness: assessment.completeness,
+        missing: assessment.missing
+    });
+    
+    return true;
+}
+
+// 获取下一个需要收集的维度
+function getNextDimension() {
+    const config = DIMENSION_CONFIG;
+    const collected = sessionData.dimensions.collected;
+    
+    // 按优先级排序所有维度
+    const allDimensions = Object.values(config.dimensions)
+        .sort((a, b) => a.priority - b.priority);
+    
+    // 查找第一个未收集或置信度低的维度
+    for (const dimension of allDimensions) {
+        const collectedInfo = collected[dimension.id];
+        if (!collectedInfo || collectedInfo.confidence < 0.7) {
+            return dimension;
+        }
+    }
+    
+    return null; // 所有维度都已收集
+}
+
+// 生成Agent系统消息
+function generateSystemMessage() {
+    const config = DIMENSION_CONFIG;
+    const assessment = assessDimensionCompleteness();
+    
+    let systemMessage = `你是一个专业的礼物推荐助手，通过自然对话收集用户信息来提供个性化的礼物建议。
+
+**你的任务：**
+通过友好、自然的对话，了解以下维度的信息：
+`;
+    
+    // 添加维度说明
+    Object.values(config.dimensions).forEach(dim => {
+        const collected = sessionData.dimensions.collected[dim.id];
+        const status = collected ? '✓' : '○';
+        systemMessage += `${status} ${dim.name}：${dim.description}\n`;
+    });
+    
+    systemMessage += `
+**对话原则：**
+1. 使用开放式问题，避免机械式选择题
+2. 根据用户回答自然引导到下一个话题
+3. 可以从一个问题中收集多个维度的信息
+4. 保持对话的连贯性和趣味性
+5. 当收集到足够信息时，主动提供礼物推荐
+
+**当前状态：**
+- 完整性：${Math.round(assessment.completeness * 100)}%
+- 还需了解：${assessment.missing.map(id => config.dimensions[id]?.name).join('、') || '无'}
+`;
+    
+    return systemMessage;
 }
 
 // 保存聊天记录到Firebase（使用事件记录机制）
