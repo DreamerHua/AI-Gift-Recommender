@@ -462,8 +462,19 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeDimensionSystem();
     
     // 监听认证状态变化
+    console.log('设置auth.onAuthStateChanged监听器');
     auth.onAuthStateChanged(async function(user) {
+        console.log('认证状态变化:', {
+            user: user ? {
+                uid: user.uid,
+                email: user.email,
+                isAnonymous: user.isAnonymous,
+                emailVerified: user.emailVerified
+            } : null
+        });
+        
         if (user && !user.isAnonymous) {
+            console.log('处理非匿名用户登录');
             // 用户已通过真实方式登录（非匿名）
             sessionData.userId = user.uid;
             
@@ -481,14 +492,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 await createSession();
             }
             
+            console.log('记录登录成功事件');
             recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
                 userId: user.uid,
                 loginMethod: 'authenticated',
+                email: user.email,
                 timestamp: new Date()
             });
             
+            console.log('跳转到欢迎页面');
             showPage(welcomePage);
         } else if (user && user.isAnonymous) {
+            console.log('处理匿名用户登录');
             // 匿名用户登录
             sessionData.userId = user.uid;
             
@@ -506,6 +521,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 await createSession();
             }
         } else if (!user) {
+            console.log('用户未登录，显示登录页面');
             // 用户未登录，显示登录页面
             recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
                 status: 'no_user',
@@ -558,67 +574,86 @@ function addGlobalEventListeners() {
 
 // 登录按钮事件监听
 googleLoginBtn.addEventListener('click', function() {
+    console.log('Google登录按钮被点击');
+    
     // 在开发环境使用弹窗，在生产环境使用重定向
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    console.log('当前环境检测:', { hostname: window.location.hostname, isLocalhost });
     
     if (isLocalhost) {
+        console.log('使用弹窗方式进行Google登录');
         // 开发环境使用弹窗方式
         auth.signInWithPopup(provider)
             .then(function(result) {
+                console.log('Google弹窗登录Promise resolved:', result);
                 if (result.user) {
                     // 登录成功
                     var user = result.user;
-                    sessionData.userId = user.uid;
-                    console.log('Google登录成功:', user.email);
-                    
-                    // 记录登录成功事件
-                    recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
-                        method: 'google',
-                        timestamp: new Date()
+                    console.log('Google登录成功:', {
+                        email: user.email,
+                        uid: user.uid,
+                        isAnonymous: user.isAnonymous
                     });
                     
-                    // 跳转到欢迎页面
-                    showPage(welcomePage);
+                    // 注意：不在这里直接跳转页面，让auth.onAuthStateChanged统一处理
+                    // 页面跳转和事件记录将由认证状态监听器处理
+                } else {
+                    console.log('Google登录返回结果但没有用户信息:', result);
                 }
             })
             .catch(function(error) {
-                console.error('Google登录失败:', error);
+                console.error('Google登录失败:', {
+                    code: error.code,
+                    message: error.message,
+                    credential: error.credential
+                });
                 if (error.code === 'auth/account-exists-with-different-credential') {
                     alert('此邮箱已经使用其他登录方式注册过账号');
+                } else if (error.code === 'auth/popup-closed-by-user') {
+                    console.log('用户关闭了登录弹窗');
                 } else {
                     alert('登录失败: ' + error.message);
                 }
             });
     } else {
+        console.log('使用重定向方式进行Google登录');
         // 生产环境使用重定向方式
         auth.signInWithRedirect(provider)
             .catch(function(error) {
-                console.error('Google登录失败:', error);
+                console.error('Google重定向登录失败:', error);
                 alert('登录失败: ' + error.message);
             });
     }
 });
 
 // 处理重定向登录后的结果
+console.log('检查Google重定向登录结果...');
 auth.getRedirectResult()
     .then(function(result) {
+        console.log('Google重定向结果:', result);
         if (result.user) {
             // 登录成功
             var user = result.user;
-            sessionData.userId = user.uid;
-            
-            // 记录登录成功事件
-            recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
-                method: 'google_redirect',
-                timestamp: new Date()
+            console.log('Google重定向登录成功:', {
+                email: user.email,
+                uid: user.uid,
+                isAnonymous: user.isAnonymous
             });
             
-            // 跳转到欢迎页面
-            showPage(welcomePage);
+            // 注意：不在这里直接跳转页面，让auth.onAuthStateChanged统一处理
+            // 页面跳转和事件记录将由认证状态监听器处理
+        } else if (result.credential) {
+            console.log('有凭证但没有用户:', result.credential);
+        } else {
+            console.log('没有重定向登录结果');
         }
     })
     .catch(function(error) {
-        console.error('Google登录失败:', error);
+        console.error('Google重定向登录失败:', {
+            code: error.code,
+            message: error.message,
+            credential: error.credential
+        });
         // 显示错误信息给用户
         if (error.code === 'auth/account-exists-with-different-credential') {
             alert('此邮箱已经使用其他登录方式注册过账号');
