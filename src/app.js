@@ -475,6 +475,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // 重新加载聊天历史
                 await loadChatHistoryFromFirestore();
+            } else {
+                // 如果没有现有会话，创建新会话
+                console.log('没有现有会话，为用户创建新会话');
+                await createSession();
             }
             
             recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
@@ -496,6 +500,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // 重新加载聊天历史
                 await loadChatHistoryFromFirestore();
+            } else {
+                // 如果没有现有会话，创建新会话
+                console.log('没有现有会话，为匿名用户创建新会话');
+                await createSession();
             }
         } else if (!user) {
             // 用户未登录，显示登录页面
@@ -550,12 +558,36 @@ function addGlobalEventListeners() {
 
 // 登录按钮事件监听
 googleLoginBtn.addEventListener('click', function() {
-    // 使用重定向方式而不是弹窗，避免被浏览器阻止
-    auth.signInWithRedirect(provider)
-        .catch(function(error) {
-            console.error('Google登录失败:', error);
-            alert('登录失败: ' + error.message);
-        });
+    // 在开发环境使用弹窗，在生产环境使用重定向
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (isLocalhost) {
+        // 开发环境使用弹窗方式
+        auth.signInWithPopup(provider)
+            .then(function(result) {
+                if (result.user) {
+                    // 登录成功
+                    var user = result.user;
+                    sessionData.userId = user.uid;
+                    console.log('Google登录成功:', user.email);
+                }
+            })
+            .catch(function(error) {
+                console.error('Google登录失败:', error);
+                if (error.code === 'auth/account-exists-with-different-credential') {
+                    alert('此邮箱已经使用其他登录方式注册过账号');
+                } else {
+                    alert('登录失败: ' + error.message);
+                }
+            });
+    } else {
+        // 生产环境使用重定向方式
+        auth.signInWithRedirect(provider)
+            .catch(function(error) {
+                console.error('Google登录失败:', error);
+                alert('登录失败: ' + error.message);
+            });
+    }
 });
 
 // 处理重定向登录后的结果
