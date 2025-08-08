@@ -570,6 +570,15 @@ googleLoginBtn.addEventListener('click', function() {
                     var user = result.user;
                     sessionData.userId = user.uid;
                     console.log('Google登录成功:', user.email);
+                    
+                    // 记录登录成功事件
+                    recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
+                        method: 'google',
+                        timestamp: new Date()
+                    });
+                    
+                    // 跳转到欢迎页面
+                    showPage(welcomePage);
                 }
             })
             .catch(function(error) {
@@ -597,6 +606,15 @@ auth.getRedirectResult()
             // 登录成功
             var user = result.user;
             sessionData.userId = user.uid;
+            
+            // 记录登录成功事件
+            recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
+                method: 'google_redirect',
+                timestamp: new Date()
+            });
+            
+            // 跳转到欢迎页面
+            showPage(welcomePage);
         }
     })
     .catch(function(error) {
