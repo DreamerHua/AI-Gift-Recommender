@@ -531,6 +531,40 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // 处理重定向登录后的结果（在认证状态监听器设置后执行）
+    console.log('检查Google重定向登录结果...');
+    auth.getRedirectResult()
+        .then(function(result) {
+            console.log('Google重定向结果:', result);
+            if (result.user) {
+                // 登录成功
+                var user = result.user;
+                console.log('Google重定向登录成功:', {
+                    email: user.email,
+                    uid: user.uid,
+                    isAnonymous: user.isAnonymous
+                });
+                
+                // 注意：不在这里直接跳转页面，让auth.onAuthStateChanged统一处理
+                // 页面跳转和事件记录将由认证状态监听器处理
+            } else if (result.credential) {
+                console.log('有凭证但没有用户:', result.credential);
+            } else {
+                console.log('没有重定向登录结果');
+            }
+        })
+        .catch(function(error) {
+            console.error('Google重定向登录失败:', {
+                code: error.code,
+                message: error.message,
+                credential: error.credential
+            });
+            // 显示错误信息给用户
+            if (error.code === 'auth/account-exists-with-different-credential') {
+                alert('此邮箱已经使用其他登录方式注册过账号');
+            }
+        });
+    
     // 添加全局用户行为监听器
     addGlobalEventListeners();
 });
@@ -626,39 +660,7 @@ googleLoginBtn.addEventListener('click', function() {
     }
 });
 
-// 处理重定向登录后的结果
-console.log('检查Google重定向登录结果...');
-auth.getRedirectResult()
-    .then(function(result) {
-        console.log('Google重定向结果:', result);
-        if (result.user) {
-            // 登录成功
-            var user = result.user;
-            console.log('Google重定向登录成功:', {
-                email: user.email,
-                uid: user.uid,
-                isAnonymous: user.isAnonymous
-            });
-            
-            // 注意：不在这里直接跳转页面，让auth.onAuthStateChanged统一处理
-            // 页面跳转和事件记录将由认证状态监听器处理
-        } else if (result.credential) {
-            console.log('有凭证但没有用户:', result.credential);
-        } else {
-            console.log('没有重定向登录结果');
-        }
-    })
-    .catch(function(error) {
-        console.error('Google重定向登录失败:', {
-            code: error.code,
-            message: error.message,
-            credential: error.credential
-        });
-        // 显示错误信息给用户
-        if (error.code === 'auth/account-exists-with-different-credential') {
-            alert('此邮箱已经使用其他登录方式注册过账号');
-        }
-    });
+// 注意：auth.getRedirectResult() 已移到 DOMContentLoaded 事件中处理，确保在认证状态监听器设置后执行
 
 guestLoginBtn.addEventListener('click', function() {
     auth.signInAnonymously()
