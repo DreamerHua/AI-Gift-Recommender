@@ -902,6 +902,20 @@ document.querySelectorAll('.option-btn').forEach(function(button) {
         // 记录用户回答
         recordAnswer(step, value);
         
+        // 同时更新维度信息系统
+        const dimensionMapping = {
+            'step-relationship': 'relationship',
+            'step-occasion': 'occasion', 
+            'step-intent': 'intent',
+            'step-personality': 'personality',
+            'step-love-language': 'loveLanguage'
+        };
+        
+        const dimensionId = dimensionMapping[step];
+        if (dimensionId) {
+            updateDimensionInfo(dimensionId, value, 1.0, 'ui_selection');
+        }
+        
         // 根据当前步骤显示下一步
         if (step === 'step-relationship') {
             hideStep(stepRelationship);
@@ -944,9 +958,9 @@ document.querySelectorAll('.option-btn').forEach(function(button) {
             showPage(loadingPage);
             
             // 模拟加载时间
-            setTimeout(function() {
+            setTimeout(async function() {
                 const recommendationStartTime = Date.now();
-                generateRecommendations();
+                await generateRecommendations();
                 
                 recordEvent(EVENT_TYPES.RECOMMENDATION_GENERATED, {
                     totalStepsCompleted: 5,
@@ -1473,17 +1487,269 @@ function hideStep(step) {
     step.classList.add('hidden');
 }
 
+// AI生成推荐结果
+async function generateAIRecommendations() {
+    try {
+        // 构建用户画像和偏好信息
+        const userProfile = buildUserProfile();
+        
+        // 构建AI推荐提示词
+        const prompt = `
+你是一个专业的礼物推荐专家。请根据以下用户信息，推荐3个最适合的礼物。
+
+用户信息：
+${userProfile}
+
+请严格按照以下JSON格式返回推荐结果，不要包含任何其他文字：
+
+[
+  {
+    "id": 1,
+    "title": "礼物名称",
+    "description": "详细描述，50字以内",
+    "price": "价格区间，如¥100-200",
+    "reason": "推荐理由，结合用户偏好说明为什么适合",
+    "where": "购买渠道，如淘宝、京东等",
+    "image": "https://example.com/image.jpg"
+  },
+  {
+    "id": 2,
+    "title": "礼物名称",
+    "description": "详细描述，50字以内",
+    "price": "价格区间，如¥100-200",
+    "reason": "推荐理由，结合用户偏好说明为什么适合",
+    "where": "购买渠道，如淘宝、京东等",
+    "image": "https://example.com/image.jpg"
+  },
+  {
+    "id": 3,
+    "title": "礼物名称",
+    "description": "详细描述，50字以内",
+    "price": "价格区间，如¥100-200",
+    "reason": "推荐理由，结合用户偏好说明为什么适合",
+    "where": "购买渠道，如淘宝、京东等",
+    "image": "https://example.com/image.jpg"
+  }
+]
+
+注意：
+1. 必须返回有效的JSON格式
+2. image字段请使用合适的商品图片URL
+3. 价格要符合中国市场实际情况
+4. 推荐要有针对性和个性化
+        `;
+        
+        console.log('AI推荐提示词:', prompt);
+        
+        // 调用AI API
+        const aiResponse = await callAIAPI(prompt, 'recommendation');
+        
+        // 解析AI返回的JSON
+        const recommendations = parseAIRecommendations(aiResponse);
+        // 打印每个推荐礼物的标题
+        recommendations.forEach(recommendation => {
+            console.log('推荐礼物标题:', recommendation.title);
+        });
+        
+        return recommendations;
+        
+    } catch (error) {
+        console.error('AI推荐生成失败:', error);
+        return null;
+    }
+}
+
+// 构建用户画像
+function buildUserProfile() {
+    const profile = [];
+    
+    // 优先使用维度信息系统的数据，避免重复
+    if (sessionData.dimensions && sessionData.dimensions.collected) {
+        const collected = sessionData.dimensions.collected;
+        
+        if (collected.relationship) {
+            const relationshipLabel = DIMENSION_CONFIG.dimensions.relationship.options
+                .find(opt => opt.value === collected.relationship.value)?.label;
+            profile.push(`关系类型: ${relationshipLabel || collected.relationship.value}`);
+        }
+        
+        if (collected.occasion) {
+            const occasionLabel = DIMENSION_CONFIG.dimensions.occasion.options
+                .find(opt => opt.value === collected.occasion.value)?.label;
+            profile.push(`送礼场合: ${occasionLabel || collected.occasion.value}`);
+        }
+        
+        if (collected.intent) {
+            const intentLabel = DIMENSION_CONFIG.dimensions.intent.options
+                .find(opt => opt.value === collected.intent.value)?.label;
+            profile.push(`情感意图: ${intentLabel || collected.intent.value}`);
+        }
+        
+        if (collected.personality) {
+            const personalityLabel = DIMENSION_CONFIG.dimensions.personality.options
+                .find(opt => opt.value === collected.personality.value)?.label;
+            profile.push(`性格特征: ${personalityLabel || collected.personality.value}`);
+        }
+        
+        if (collected.loveLanguage) {
+            const loveLanguageLabel = DIMENSION_CONFIG.dimensions.loveLanguage.options
+                .find(opt => opt.value === collected.loveLanguage.value)?.label;
+            profile.push(`爱的语言: ${loveLanguageLabel || collected.loveLanguage.value}`);
+        }
+    } else if (sessionData.answers) {
+        // 如果维度信息系统没有数据，则回退到传统问卷答案
+        const stepToDimension = {
+            'step-relationship': 'relationship',
+            'step-occasion': 'occasion',
+            'step-intent': 'intent', 
+            'step-personality': 'personality',
+            'step-love-language': 'loveLanguage'
+        };
+        
+        // 遍历所有答案
+        for (const [stepName, value] of Object.entries(sessionData.answers)) {
+            const dimensionId = stepToDimension[stepName];
+            if (dimensionId && DIMENSION_CONFIG.dimensions[dimensionId]) {
+                const dimension = DIMENSION_CONFIG.dimensions[dimensionId];
+                const option = dimension.options.find(opt => opt.value === value);
+                const label = option ? option.label : value;
+                
+                // 根据维度类型添加到profile
+                switch (dimensionId) {
+                    case 'relationship':
+                        profile.push(`关系类型: ${label}`);
+                        break;
+                    case 'occasion':
+                        profile.push(`送礼场合: ${label}`);
+                        break;
+                    case 'intent':
+                        profile.push(`情感意图: ${label}`);
+                        break;
+                    case 'personality':
+                        profile.push(`性格特征: ${label}`);
+                        break;
+                    case 'loveLanguage':
+                        profile.push(`爱的语言: ${label}`);
+                        break;
+                }
+            }
+        }
+    }
+    
+    // 收集聊天历史中的关键信息
+    if (chatState.chatHistory && chatState.chatHistory.length > 0) {
+        const recentChats = chatState.chatHistory.slice(-5); // 最近5条对话
+        const chatSummary = recentChats.map(chat => 
+            `用户: ${chat.userMessage}\nAI: ${chat.aiResponse}`
+        ).join('\n\n');
+        profile.push(`最近对话内容:\n${chatSummary}`);
+    }
+    
+    return profile.length > 0 ? profile.join('\n') : '暂无用户偏好信息';
+}
+
+// 解析AI返回的推荐结果
+function parseAIRecommendations(aiResponse) {
+    try {
+        // 清理AI响应，移除可能的markdown格式
+        let cleanResponse = aiResponse.trim();
+        
+        // 移除可能的代码块标记
+        cleanResponse = cleanResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+        
+        // 尝试解析JSON
+        const recommendations = JSON.parse(cleanResponse);
+        
+        // 验证数据格式
+        if (!Array.isArray(recommendations)) {
+            throw new Error('AI返回的不是数组格式');
+        }
+        
+        // 验证每个推荐项的必要字段
+        const validRecommendations = recommendations.filter(item => {
+            return item.id && item.title && item.description && 
+                   item.price && item.reason && item.where;
+        }).map((item, index) => {
+            // 确保有默认图片
+            if (!item.image || item.image === 'https://example.com/image.jpg') {
+                // 使用默认图片或根据类型选择合适的图片
+                item.image = getDefaultGiftImage(item.title);
+            }
+            
+            // 确保ID是数字
+            item.id = index + 1;
+            
+            return item;
+        });
+        
+        if (validRecommendations.length === 0) {
+            throw new Error('没有有效的推荐结果');
+        }
+        
+        console.log('解析成功的AI推荐:', validRecommendations);
+        return validRecommendations;
+        
+    } catch (error) {
+        console.error('解析AI推荐结果失败:', error);
+        console.log('原始AI响应:', aiResponse);
+        return null;
+    }
+}
+
+// 根据礼物类型获取默认图片
+function getDefaultGiftImage(title) {
+    const defaultImages = {
+        '投影': 'https://i.etsystatic.com/5996810/r/il/de6316/1957231659/il_800x800.1957231659_rkvl.jpg',
+        '钱包': 'https://i.etsystatic.com/15339935/r/il/524abc/6624037822/il_1588xN.6624037822_koh5.jpg',
+        '照片': 'https://img-1.kwcdn.com/product/Fancyalgo/VirtualModelMatting/80be66f6b9b344007357f3a077691cbb.jpg?imageView2/2/w/264/q/70/format/webp',
+        '书': 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=400',
+        '花': 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=400',
+        '手表': 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400',
+        '首饰': 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=400',
+        '香水': 'https://images.unsplash.com/photo-1541643600914-78b084683601?w=400'
+    };
+    
+    // 根据标题关键词匹配图片
+    for (const [keyword, image] of Object.entries(defaultImages)) {
+        if (title.includes(keyword)) {
+            return image;
+        }
+    }
+    
+    // 默认图片
+    return 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=400';
+}
+
 // 生成推荐结果
-function generateRecommendations() {
-    // 在实际应用中，这里应该根据用户回答调用AI服务获取推荐
-    // 这里使用模拟数据
-    sessionData.recommendations = mockRecommendations;
-    
-    // 保存推荐结果到Firebase
-    saveRecommendations();
-    
-    // 渲染推荐结果
-    recommendationsContainer.innerHTML = '';
+async function generateRecommendations() {
+    try {
+        // 显示加载状态
+        recommendationsContainer.innerHTML = '<div class="text-center py-8"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div><p class="mt-4 text-stone-600">AI正在为您生成个性化推荐...</p></div>';
+        
+        // 调用AI生成推荐
+        const aiRecommendations = await generateAIRecommendations();
+        
+        if (aiRecommendations && aiRecommendations.length > 0) {
+            sessionData.recommendations = aiRecommendations;
+        } else {
+            // 如果AI生成失败，使用备用数据
+            console.warn('AI推荐生成失败，使用备用推荐');
+            sessionData.recommendations = mockRecommendations;
+        }
+        
+        // 保存推荐结果到Firebase
+        saveRecommendations();
+        
+        // 渲染推荐结果
+        recommendationsContainer.innerHTML = '';
+        
+    } catch (error) {
+        console.error('生成推荐时出错:', error);
+        // 出错时使用备用数据
+        sessionData.recommendations = mockRecommendations;
+        saveRecommendations();
+        recommendationsContainer.innerHTML = '';
+    }
     
     sessionData.recommendations.forEach(gift => {
         const giftElement = document.createElement('div');
@@ -2237,7 +2503,7 @@ async function extractDimensionsFromMessage(message) {
                     confidence: 0.6,  // 关键词匹配的置信度较低
                     source: 'keyword_matching',
                     timestamp: new Date().toISOString(),
-                    stepNumber: stepNumber
+                    // stepNumber: stepNumber
                 };
             }
         });
