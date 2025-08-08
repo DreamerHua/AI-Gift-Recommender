@@ -1819,13 +1819,37 @@ async function sendChatMessage(stepNumber) {
     // 添加用户消息到界面
     addMessageToChat(stepNumber, message, 'user');
     
-    // 从用户消息中提取维度信息
-    const extractedDimensions = extractDimensionsFromMessage(message, stepNumber);
+    // 从用户消息中提取维度信息（现在是异步的）
+    let extractedDimensions = {};
+    try {
+        extractedDimensions = await extractDimensionsFromMessage(message, stepNumber);
+        console.log('提取到的维度信息:', extractedDimensions);
+    } catch (error) {
+        console.error('维度提取失败:', error);
+        // 继续执行，但没有提取到维度信息
+    }
     
     // 更新维度信息
     Object.entries(extractedDimensions).forEach(([dimId, info]) => {
         updateDimensionInfo(dimId, info.value, info.confidence, info.source);
     });
+    
+    // 实时更新completeness（无论是否提取到维度信息）
+    const previousCompleteness = sessionData.dimensions.completeness.score || 0;
+    assessDimensionCompleteness();
+    const currentCompleteness = sessionData.dimensions.completeness.score || 0;
+    
+    // 如果完整性发生变化，记录事件
+    if (previousCompleteness !== currentCompleteness) {
+        recordEvent('completeness_updated', {
+            step: stepNumber,
+            previous_score: previousCompleteness,
+            current_score: currentCompleteness,
+            extracted_dimensions: Object.keys(extractedDimensions),
+            missing_dimensions: sessionData.dimensions.completeness.missingDimensions
+        });
+        console.log(`完整性更新: ${previousCompleteness} -> ${currentCompleteness}`);
+    }
     
     // 添加到上下文历史
     sessionData.agent.contextHistory.push({
@@ -1867,6 +1891,8 @@ async function sendChatMessage(stepNumber) {
             aiResponse: aiResponse,
             extractedDimensions: extractedDimensions,
             completeness: sessionData.dimensions.completeness,
+            ai_extraction_used: Object.values(extractedDimensions).some(dim => dim.source === 'ai_extraction'),
+            extraction_methods: Object.values(extractedDimensions).map(dim => dim.source),
             timestamp: new Date().toISOString()
         });
         
@@ -2191,13 +2217,24 @@ function assessDimensionCompleteness() {
     };
 }
 
-// 从用户消息中提取维度信息
-function extractDimensionsFromMessage(message, stepNumber = null) {
+// 从用户消息中提取维度信息（使用AI智能推理）
+async function extractDimensionsFromMessage(message, stepNumber = null) {
     const config = DIMENSION_CONFIG;
     const extracted = {};
     
-    // 简单的关键词匹配提取（后续可以用AI增强）
+    try {
+        // 使用AI进行智能维度提取
+        const aiExtracted = await extractDimensionsWithAI(message);
+        Object.assign(extracted, aiExtracted);
+    } catch (error) {
+        console.warn('AI维度提取失败，回退到关键词匹配:', error);
+    }
+    
+    // 关键词匹配作为备选方案
     Object.keys(config.dimensions).forEach(dimId => {
+        // 如果AI已经提取到该维度，跳过关键词匹配
+        if (extracted[dimId]) return;
+        
         const dimension = config.dimensions[dimId];
         
         dimension.options.forEach(option => {
@@ -2208,14 +2245,131 @@ function extractDimensionsFromMessage(message, stepNumber = null) {
                 extracted[dimId] = {
                     value: option.value,
                     label: option.label,
-                    confidence: 0.8,  // 基于关键词匹配的置信度
-                    source: 'chat_extraction',
+                    confidence: 0.6,  // 关键词匹配的置信度较低
+                    source: 'keyword_matching',
                     timestamp: new Date().toISOString(),
                     stepNumber: stepNumber
                 };
             }
         });
     });
+    
+    return extracted;
+}
+
+// 使用AI进行智能维度提取
+async function extractDimensionsWithAI(message) {
+    const config = DIMENSION_CONFIG;
+    const extracted = {};
+    
+    try {
+        // 检查Google AI SDK是否可用
+        if (typeof window.GoogleGenerativeAI === 'undefined' && typeof GoogleGenerativeAI === 'undefined') {
+            throw new Error('Google Generative AI SDK未加载');
+        }
+        
+        // 初始化Gemini API
+        const API_KEY = "AIzaSyBEuFVK35-OtMCZfzxQHdLpGljR3DKSqFA";
+        const GoogleAI = window.GoogleGenerativeAI || GoogleGenerativeAI;
+        const genAI = new GoogleAI(API_KEY);
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-1.5-flash",
+            generationConfig: {
+                temperature: 0.3,  // 降低温度以获得更一致的结果
+                topK: 40,
+                topP: 0.95,
+                maxOutputTokens: 512,
+            }
+        });
+        
+        // 构建维度提取提示词   // TODO: 提示词内容待拓展
+        const dimensionPrompt = `
+你是一个专业的信息提取助手。请分析以下用户消息，提取礼物推荐相关的维度信息。
+
+用户消息："${message}"
+
+请识别以下维度（如果消息中包含相关信息）：
+
+1. 关系类型：
+   - partner（情侣、男朋友、女朋友、爱人、伴侣）
+   - friend（朋友、好友、闺蜜、兄弟）
+   - colleague（同事、同学、老师、上司、下属）
+   - family（家人、父母、兄弟姐妹、亲戚）
+
+2. 场合：
+   - birthday（生日、生辰）
+   - anniversary（纪念日、周年、情人节、结婚纪念日）
+   - gratitude（感谢、感恩、答谢、回礼）
+   - celebration（庆祝、升职、毕业、成功）
+
+3. 情感意图：
+   - surprise（惊喜、意外、神秘）
+   - touching（感动、温馨、浪漫、深情）
+   - fun（有趣、搞笑、娱乐、轻松）
+   - healing（治愈、安慰、温暖、放松）
+
+请仅返回JSON格式，包含识别到的维度。如果某个维度未识别到，请不要包含该字段。
+置信度范围：0.7-0.95（0.7=可能，0.8=较确定，0.9=很确定，0.95=非常确定）
+
+示例格式：
+{"relationship": {"value": "partner", "confidence": 0.9}, "occasion": {"value": "birthday", "confidence": 0.95}}
+
+只返回JSON，不要其他解释文字。
+        `;
+        
+        console.log('AI维度提取提示词:', dimensionPrompt);
+        
+        // 调用AI API
+        const result = await model.generateContent(dimensionPrompt);
+        const response = await result.response;
+        const aiResponse = response.text().trim();
+        
+        console.log('AI维度提取原始回复:', aiResponse);
+        
+        // 解析AI返回的JSON
+        let parsedResponse;
+        try {
+            // 清理可能的markdown格式
+            const cleanResponse = aiResponse.replace(/```json\n?|```\n?/g, '').trim();
+            parsedResponse = JSON.parse(cleanResponse);
+        } catch (parseError) {
+            console.warn('AI返回的JSON解析失败:', parseError, '原始回复:', aiResponse);
+            return extracted;
+        }
+        
+        // 验证并转换AI提取的维度信息
+        Object.entries(parsedResponse).forEach(([dimId, info]) => {
+            const dimension = config.dimensions[dimId];
+            if (!dimension) {
+                console.warn(`未知维度: ${dimId}`);
+                return;
+            }
+            
+            const option = dimension.options.find(opt => opt.value === info.value);
+            if (!option) {
+                console.warn(`维度 ${dimId} 的未知选项: ${info.value}`);
+                return;
+            }
+            
+            // 验证置信度
+            const confidence = Math.max(0.7, Math.min(0.95, info.confidence || 0.8));
+            
+            extracted[dimId] = {
+                value: option.value,
+                label: option.label,
+                confidence: confidence,
+                source: 'ai_extraction',
+                timestamp: new Date().toISOString(),
+                // stepNumber: stepNumber || null
+            };
+        });
+        
+        console.log('AI成功提取的维度信息:', extracted);
+        
+    } catch (error) {
+        console.error('AI维度提取失败:', error);
+        throw error;
+    }
     
     return extracted;
 }
@@ -2311,6 +2465,15 @@ function generateSystemMessage() {
 3. 可以从一个问题中收集多个维度的信息
 4. 保持对话的连贯性和趣味性
 5. 当收集到足够信息时，主动提供礼物推荐
+6. 仔细理解用户的自然语言表达，识别隐含的维度信息
+
+**重要提示：**
+- 当用户提到"女朋友"、"男朋友"、"爱人"、"伴侣"时，这表示关系类型是"情侣"
+- 当用户提到"生日"、"生辰"时，这表示场合是"生日"
+- 当用户提到"纪念日"、"周年"、"情人节"时，这表示场合是"纪念日"
+- 当用户提到"惊喜"、"意外"时，这表示情感意图是"惊喜"
+- 当用户提到"感动"、"温馨"、"浪漫"时，这表示情感意图是"感动"
+- 仔细分析用户的每句话，提取其中的维度信息
 
 **当前状态：**
 - 完整性：${Math.round(assessment.completeness * 100)}%
