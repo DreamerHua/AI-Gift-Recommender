@@ -320,6 +320,53 @@ const mockRecommendations = [
     }
 ];
 
+// 工具函数
+function createTimestamp() {
+    return new Date();
+}
+
+function formatTimestamp(timestamp) {
+    if (!timestamp) return '';
+    
+    // 如果是 Firestore 时间戳对象
+    if (timestamp && typeof timestamp.toDate === 'function') {
+        return timestamp.toDate().toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+    
+    // 如果是 Date 对象
+    if (timestamp instanceof Date) {
+        return timestamp.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+    
+    // 如果是字符串，尝试解析
+    if (typeof timestamp === 'string') {
+        const date = new Date(timestamp);
+        if (!isNaN(date.getTime())) {
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+    }
+    
+    return '';
+}
+
 // DOM元素
 const loginPage = document.getElementById('login-page');
 const welcomePage = document.getElementById('welcome-page');
@@ -415,10 +462,20 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeDimensionSystem();
     
     // 监听认证状态变化
-    auth.onAuthStateChanged(function(user) {
+    auth.onAuthStateChanged(async function(user) {
         if (user && !user.isAnonymous) {
             // 用户已通过真实方式登录（非匿名）
             sessionData.userId = user.uid;
+            
+            // 尝试从localStorage恢复sessionId
+            const storedSessionId = localStorage.getItem('currentSessionId');
+            if (storedSessionId) {
+                sessionData.sessionId = storedSessionId;
+                console.log('已恢复会话ID:', storedSessionId);
+                
+                // 重新加载聊天历史
+                await loadChatHistoryFromFirestore();
+            }
             
             recordEvent(EVENT_TYPES.LOGIN_SUCCESS, {
                 userId: user.uid,
@@ -427,6 +484,19 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             showPage(welcomePage);
+        } else if (user && user.isAnonymous) {
+            // 匿名用户登录
+            sessionData.userId = user.uid;
+            
+            // 尝试从localStorage恢复sessionId
+            const storedSessionId = localStorage.getItem('currentSessionId');
+            if (storedSessionId) {
+                sessionData.sessionId = storedSessionId;
+                console.log('已恢复匿名用户会话ID:', storedSessionId);
+                
+                // 重新加载聊天历史
+                await loadChatHistoryFromFirestore();
+            }
         } else if (!user) {
             // 用户未登录，显示登录页面
             recordEvent(EVENT_TYPES.LOGIN_ATTEMPT, {
@@ -435,7 +505,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             showPage(loginPage);
         }
-        // 对于匿名用户，不在这里处理跳转，而是在guestLoginBtn的点击事件中处理
     });
     
     // 添加全局用户行为监听器
@@ -1115,7 +1184,7 @@ function saveEventToFirestore(event) {
         
         db.collection('HighPriorityEvents').add({
             ...event,
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            savedAt: firebase.firestore.FieldValue.serverTimestamp()
         }).then(function(eventRef) {
             console.log('事件已保存:', eventRef.id);
         });
@@ -1208,6 +1277,9 @@ function createSession() {
         return db.collection('sessions').add(sessionDoc).then(function(sessionRef) {
             sessionData.sessionId = sessionRef.id;
             sessionCreated = true; // 标记会话已创建
+            
+            // 保存sessionId到localStorage以便页面刷新后恢复
+            localStorage.setItem('sessionId', sessionData.sessionId);
             
             // 更新document以包含sessionId字段
             sessionRef.update({
@@ -1563,7 +1635,85 @@ const chatState = {
 };
 
 // 初始化聊天窗口事件监听器
-function initializeChatWindows() {
+// 从Firestore加载聊天历史
+async function loadChatHistoryFromFirestore() {
+    if (!sessionData.userId || !sessionData.sessionId) {
+        console.log('用户未登录或会话未创建，跳过聊天历史加载');
+        return;
+    }
+    
+    try {
+        const sessionRef = db.collection('sessions').doc(sessionData.sessionId);
+        const sessionDoc = await sessionRef.get();
+        
+        if (sessionDoc.exists) {
+            const data = sessionDoc.data();
+            const chatHistory = data.chatHistory || [];
+            
+            // 清空本地聊天历史
+            for (let step = 1; step <= 5; step++) {
+                chatState.chatHistories[step] = [];
+                chatState.conversations[`step${step}`] = [];
+            }
+            
+            // 按步骤重新组织聊天历史
+            chatHistory.forEach(interaction => {
+                const step = interaction.step || 1;
+                if (step >= 1 && step <= 5) {
+                    if (!chatState.chatHistories[step]) {
+                        chatState.chatHistories[step] = [];
+                    }
+                    if (!chatState.conversations[`step${step}`]) {
+                        chatState.conversations[`step${step}`] = [];
+                    }
+                    
+                    chatState.chatHistories[step].push(interaction);
+                    
+                    // 添加到conversations用于UI显示
+                    chatState.conversations[`step${step}`].push({
+                        type: 'user',
+                        message: interaction.user_message,
+                        timestamp: interaction.timestamp
+                    });
+                    chatState.conversations[`step${step}`].push({
+                        type: 'ai',
+                        message: interaction.ai_response,
+                        timestamp: interaction.timestamp
+                    });
+                }
+            });
+            
+            // 更新所有聊天窗口的UI
+            for (let step = 1; step <= 5; step++) {
+                updateChatUI(step);
+            }
+            
+            console.log(`已加载聊天历史，共 ${chatHistory.length} 条交互记录`);
+        }
+    } catch (error) {
+        console.error('加载聊天历史失败:', error);
+    }
+}
+
+// 更新聊天窗口UI
+function updateChatUI(stepNumber) {
+    const chatMessages = document.getElementById(`chat-messages-step${stepNumber}`);
+    if (!chatMessages) return;
+    
+    // 清空现有消息
+    chatMessages.innerHTML = '';
+    
+    // 重新添加所有消息
+    const conversations = chatState.conversations[`step${stepNumber}`] || [];
+    conversations.forEach(msg => {
+        addMessageToChat(stepNumber, msg.message, msg.type);
+    });
+}
+
+async function initializeChatWindows() {
+    // 先加载聊天历史
+    await loadChatHistoryFromFirestore();
+    
     // 为每个步骤的聊天窗口添加事件监听器
     for (let i = 1; i <= 5; i++) {
         const toggleBtn = document.getElementById(`chat-toggle-step${i}`);
@@ -1585,7 +1735,7 @@ function initializeChatWindows() {
                 }
             });
             
-            // 初始化对话记录
+            // 初始化对话记录（如果还没有的话）
             if (!chatState.conversations[`step${i}`]) {
                 chatState.conversations[`step${i}`] = [];
             }
@@ -1604,10 +1754,30 @@ function toggleChatWindow(stepNumber) {
         chatState.activeWindows.add(`step${stepNumber}`);
         toggleBtn.innerHTML = '<i class="fa-solid fa-robot mr-2"></i>收起AI聊天';
         
+        // 检查是否是首次打开聊天窗口（没有聊天历史）
+        const hasHistory = chatState.conversations[`step${stepNumber}`] && 
+                          chatState.conversations[`step${stepNumber}`].length > 0;
+        
+        if (!hasHistory) {
+            // 显示AI引导语
+            const welcomeMessage = getWelcomeMessage(stepNumber);
+            addMessageToChat(stepNumber, welcomeMessage, 'ai');
+            
+            // 保存引导语到聊天历史
+            if (!chatState.conversations[`step${stepNumber}`]) {
+                chatState.conversations[`step${stepNumber}`] = [];
+            }
+            chatState.conversations[`step${stepNumber}`].push({
+                type: 'ai',
+                message: welcomeMessage,
+                timestamp: new Date()
+            });
+        }
+        
         // 记录事件
         recordEvent('chat_window_opened', {
             step: stepNumber,
-            timestamp: new Date().toISOString()
+            first_time: !hasHistory
         });
     } else {
         // 折叠窗口
@@ -1617,10 +1787,22 @@ function toggleChatWindow(stepNumber) {
         
         // 记录事件
         recordEvent('chat_window_closed', {
-            step: stepNumber,
-            timestamp: new Date().toISOString()
+            step: stepNumber
         });
     }
+}
+
+// 获取AI引导语
+function getWelcomeMessage(stepNumber) {
+    const welcomeMessages = {
+        1: "Hi！我是你的AI礼物助手 🎁 很高兴认识你！\n\n我可以帮你深入了解收礼人的特征，比如：\n• 他们的兴趣爱好和生活方式\n• 平时喜欢什么类型的东西\n• 有什么特别的需求或偏好\n• 你们之间有什么特殊的回忆\n\n告诉我任何你想到的关于TA的信息，我会帮你找到最合适的礼物灵感！",
+        2: "Hi！我是你的AI礼物助手 🎁\n\n在这个步骤，我们可以聊聊这次送礼的具体情况：\n• 这个场合对你们来说有什么特殊意义吗？\n• 你希望通过这份礼物表达什么？\n• 有什么预算考虑或特殊要求？\n\n分享更多细节，让我帮你找到最贴心的礼物想法！",
+        3: "Hi！我是你的AI礼物助手 🎁\n\n让我们聊聊你想通过礼物传递的情感：\n• 你最希望TA收到礼物时是什么感受？\n• 有什么特别想要表达的心意吗？\n• TA平时对什么样的惊喜比较有感觉？\n\n告诉我你的想法，我会帮你找到最能打动TA的礼物！",
+        4: "Hi！我是你的AI礼物助手 🎁\n\n我们来深入了解一下TA的性格特点：\n• TA在生活中是什么样的人？\n• 有什么独特的习惯或癖好？\n• TA通常如何度过空闲时间？\n• 什么样的东西最能吸引TA的注意？\n\n越了解TA，我们就越能找到完美的礼物！",
+        5: "Hi！我是你的AI礼物助手 🎁\n\n最后，让我们聊聊TA接受爱意的方式：\n• TA平时喜欢怎样的关怀表达？\n• 什么样的举动最能让TA感到被爱？\n• TA对物质礼物的态度如何？\n• 有什么特别能触动TA心弦的方式？\n\n这些信息将帮我为你推荐最有意义的礼物！"
+    };
+    
+    return welcomeMessages[stepNumber] || welcomeMessages[1];
 }
 
 // 发送聊天消息
@@ -1649,7 +1831,7 @@ async function sendChatMessage(stepNumber) {
     sessionData.agent.contextHistory.push({
         role: 'user',
         content: message,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         stepNumber: stepNumber,
         extractedDimensions: extractedDimensions
     });
@@ -1671,7 +1853,7 @@ async function sendChatMessage(stepNumber) {
         sessionData.agent.contextHistory.push({
             role: 'assistant',
             content: aiResponse,
-            timestamp: new Date(),
+            timestamp: new Date().toISOString(),
             stepNumber: stepNumber
         });
         
@@ -2028,7 +2210,7 @@ function extractDimensionsFromMessage(message, stepNumber = null) {
                     label: option.label,
                     confidence: 0.8,  // 基于关键词匹配的置信度
                     source: 'chat_extraction',
-                    timestamp: new Date(),
+                    timestamp: new Date().toISOString(),
                     stepNumber: stepNumber
                 };
             }
@@ -2061,12 +2243,12 @@ function updateDimensionInfo(dimensionId, value, confidence = 1.0, source = 'use
         label: option.label,
         confidence: confidence,
         source: source,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         weight: option.weight
     };
-    
+
     // 更新Agent状态
-    sessionData.agent.lastDimensionUpdate = new Date();
+    sessionData.agent.lastDimensionUpdate = new Date().toISOString();
     
     // 重新评估完整性
     const assessment = assessDimensionCompleteness();
@@ -2138,7 +2320,7 @@ function generateSystemMessage() {
     return systemMessage;
 }
 
-// 保存聊天记录到Firebase（使用事件记录机制）
+// 保存聊天记录到Firebase（统一存储在sessions文档中）
 async function saveChatToFirestore(stepNumber, userMessage, aiResponse) {
     if (!sessionData.userId || !sessionData.sessionId) {
         console.warn('用户未登录或会话未创建，无法保存聊天记录');
@@ -2150,7 +2332,8 @@ async function saveChatToFirestore(stepNumber, userMessage, aiResponse) {
         const chatInteraction = {
             user_message: userMessage,
             ai_response: aiResponse,
-            timestamp: new Date().toISOString(),
+            timestamp: new Date(),
+            step: stepNumber,
             context: buildChatContext(stepNumber)
         };
         
@@ -2160,19 +2343,33 @@ async function saveChatToFirestore(stepNumber, userMessage, aiResponse) {
         }
         chatState.chatHistories[stepNumber].push(chatInteraction);
         
-        // 获取当前步骤的完整聊天历史
-        const currentStepChatHistory = [...chatState.chatHistories[stepNumber]];
+        // 合并所有步骤的聊天历史
+        const allChatHistory = [];
+        for (let step = 1; step <= 5; step++) {
+            if (chatState.chatHistories[step] && chatState.chatHistories[step].length > 0) {
+                allChatHistory.push(...chatState.chatHistories[step]);
+            }
+        }
         
-        // 计算总交互次数
-        const totalInteractions = Object.values(chatState.chatHistories)
-            .reduce((total, stepHistory) => total + stepHistory.length, 0);
+        // 按时间戳排序
+        allChatHistory.sort((a, b) => {
+            const timeA = a.timestamp instanceof Date ? a.timestamp : new Date(a.timestamp);
+            const timeB = b.timestamp instanceof Date ? b.timestamp : new Date(b.timestamp);
+            return timeA - timeB;
+        });
         
-        // 使用事件记录机制保存聊天记录
+        // 直接更新sessions文档的chatHistory字段
+        const sessionRef = db.collection('sessions').doc(sessionData.sessionId);
+        await sessionRef.update({
+            chatHistory: allChatHistory,
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        // 同时记录事件用于分析（保持原有的分析功能）
         recordEvent(EVENT_TYPES.CHAT_WITH_AI, {
             step: stepNumber,
-            chat_history: currentStepChatHistory,
             current_interaction: chatInteraction,
-            total_interactions: totalInteractions,
+            total_interactions: allChatHistory.length,
             session_context: {
                 answers: sessionData.answers,
                 current_step: stepNumber,
@@ -2180,7 +2377,7 @@ async function saveChatToFirestore(stepNumber, userMessage, aiResponse) {
             }
         });
         
-        console.log(`聊天记录已保存 - 步骤${stepNumber}，总交互次数: ${totalInteractions}`);
+        console.log(`聊天记录已保存 - 步骤${stepNumber}，总交互次数: ${allChatHistory.length}`);
         
     } catch (error) {
         console.error('保存聊天记录失败:', error);
@@ -2190,7 +2387,8 @@ async function saveChatToFirestore(stepNumber, userMessage, aiResponse) {
             step: stepNumber,
             error_message: error.message,
             user_message: userMessage,
-            ai_response: aiResponse
+            ai_response: aiResponse,
+            timestamp: new Date()
         });
     }
 }
