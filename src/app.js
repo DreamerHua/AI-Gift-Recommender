@@ -2719,8 +2719,11 @@ function generateSystemMessage() {
 2. 根据用户回答自然引导到下一个话题
 3. 可以从一个问题中收集多个维度的信息
 4. 保持对话的连贯性和趣味性
-5. 当收集到足够信息时，主动提供礼物推荐
-6. 仔细理解用户的自然语言表达，识别隐含的维度信息
+5. **重要：永远不要主动提供礼物推荐，只有当用户明确要求推荐时才提供**
+6. 持续深入了解用户需求，不断追问更多维度信息
+7. 仔细理解用户的自然语言表达，识别隐含的维度信息
+8. 即使收集到足够信息，也要继续探索更深层的需求和偏好
+9. 鼓励用户分享更多细节，如具体的兴趣爱好、生活方式、特殊需求等
 
 **重要提示：**
 - 当用户提到"女朋友"、"男朋友"、"爱人"、"伴侣"时，这表示关系类型是"情侣"
@@ -2808,8 +2811,254 @@ function escapeHtml(text) {
     return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
 
-// 在页面加载完成后初始化聊天窗口
+// 基于聊天内容生成推荐
+async function generateRecommendationFromChat() {
+    try {
+        // 检查是否有聊天历史
+        if (!chatState.chatHistory || chatState.chatHistory.length === 0) {
+            alert('请先与AI助手进行一些对话，以便我们了解您的需求。');
+            return;
+        }
+
+        // 显示加载页面
+        showPage(loadingPage);
+        
+        // 记录事件
+        recordEvent('chat_based_recommendation_triggered', {
+            chat_interactions: chatState.chatHistory.length,
+            dimensions_collected: Object.keys(sessionData.dimensions.collected).length,
+            completeness: sessionData.dimensions.completeness
+        });
+
+        // 构建基于聊天历史的用户画像
+        const chatBasedProfile = buildChatBasedUserProfile();
+        
+        // 调用AI生成推荐
+        const aiRecommendations = await generateAIRecommendationsFromChat(chatBasedProfile);
+        
+        if (aiRecommendations && aiRecommendations.length > 0) {
+            sessionData.recommendations = aiRecommendations;
+        } else {
+            // 如果AI生成失败，使用备用数据
+            console.warn('基于聊天的AI推荐生成失败，使用备用推荐');
+            sessionData.recommendations = mockRecommendations;
+        }
+        
+        // 保存推荐结果到Firebase
+        saveRecommendations();
+        
+        // 渲染推荐结果到结果页面
+        renderRecommendationsToResultsPage();
+        
+        // 显示结果页面
+        showPage(resultsPage);
+        
+    } catch (error) {
+        console.error('基于聊天生成推荐时出错:', error);
+        // 出错时使用备用数据
+        sessionData.recommendations = mockRecommendations;
+        saveRecommendations();
+        renderRecommendationsToResultsPage();
+        showPage(resultsPage);
+    }
+}
+
+// 构建基于聊天历史的用户画像
+function buildChatBasedUserProfile() {
+    let profile = '基于用户与AI助手的聊天记录：\n\n';
+    
+    // 添加聊天历史
+    chatState.chatHistory.forEach((interaction, index) => {
+        profile += `对话${index + 1}：\n`;
+        profile += `用户：${interaction.user_message}\n`;
+        profile += `AI：${interaction.ai_response}\n\n`;
+    });
+    
+    // 添加已收集的维度信息
+    const collected = sessionData.dimensions.collected;
+    if (Object.keys(collected).length > 0) {
+        profile += '已收集的用户偏好信息：\n';
+        Object.entries(collected).forEach(([dimensionId, info]) => {
+            const dimension = DIMENSION_CONFIG.dimensions[dimensionId];
+            if (dimension) {
+                profile += `- ${dimension.name}：${info.value} (置信度：${Math.round(info.confidence * 100)}%)\n`;
+            }
+        });
+    }
+    
+    return profile;
+}
+
+// 基于聊天内容调用AI生成推荐
+async function generateAIRecommendationsFromChat(chatProfile) {
+    try {
+        const prompt = `
+你是一个专业的礼物推荐专家。请根据以下用户与AI助手的完整聊天记录，分析用户的需求并推荐3个最适合的礼物。
+
+${chatProfile}
+
+请仔细分析聊天内容，理解用户的真实需求、收礼人的特点、场合背景等信息，然后推荐最合适的礼物。
+
+请严格按照以下JSON格式返回推荐结果，不要包含任何其他文字：
+
+[
+  {
+    "id": 1,
+    "title": "礼物名称",
+    "description": "详细描述，50字以内",
+    "price": "价格区间，如¥100-200",
+    "reason": "推荐理由，结合聊天内容中的用户需求和偏好说明为什么适合",
+    "where": "购买渠道，如淘宝、京东等",
+    "image": "https://example.com/image.jpg"
+  },
+  {
+    "id": 2,
+    "title": "礼物名称",
+    "description": "详细描述，50字以内",
+    "price": "价格区间，如¥100-200",
+    "reason": "推荐理由，结合聊天内容中的用户需求和偏好说明为什么适合",
+    "where": "购买渠道，如淘宝、京东等",
+    "image": "https://example.com/image.jpg"
+  },
+  {
+    "id": 3,
+    "title": "礼物名称",
+    "description": "详细描述，50字以内",
+    "price": "价格区间，如¥100-200",
+    "reason": "推荐理由，结合聊天内容中的用户需求和偏好说明为什么适合",
+    "where": "购买渠道，如淘宝、京东等",
+    "image": "https://example.com/image.jpg"
+  }
+]
+
+注意：
+1. 必须返回有效的JSON格式
+2. image字段请使用合适的商品图片URL
+3. 价格要符合中国市场实际情况
+4. 推荐要基于聊天内容，体现个性化和针对性
+5. 推荐理由要明确引用聊天中提到的具体信息
+        `;
+        
+        console.log('基于聊天的AI推荐提示词:', prompt);
+        
+        // 调用AI API
+        const aiResponse = await callAIAPI(prompt, 'chat_recommendation');
+        
+        // 解析AI返回的JSON
+        const recommendations = parseAIRecommendations(aiResponse);
+        
+        return recommendations;
+        
+    } catch (error) {
+        console.error('基于聊天的AI推荐生成失败:', error);
+        return null;
+    }
+}
+
+// 渲染推荐结果到结果页面
+function renderRecommendationsToResultsPage() {
+    recommendationsContainer.innerHTML = '';
+    
+    sessionData.recommendations.forEach(gift => {
+        const giftElement = document.createElement('div');
+        giftElement.className = 'recommendation-card bg-white border border-stone-200 rounded-2xl p-6 hover:shadow-lg transition-shadow duration-300';
+        giftElement.innerHTML = `
+            <div class="flex flex-col md:flex-row gap-6">
+                <div class="md:w-1/3">
+                    <img src="${gift.image}" alt="${gift.title}" class="w-full h-48 object-cover rounded-xl" onerror="this.src='https://via.placeholder.com/300x200?text=礼物图片'">
+                </div>
+                <div class="md:w-2/3">
+                    <h3 class="text-xl font-bold text-stone-900 mb-3">${gift.title}</h3>
+                    <p class="text-stone-600 mb-4">${gift.description}</p>
+                    
+                    <div class="space-y-3">
+                        <div class="flex items-start">
+                            <span class="inline-block w-16 text-sm font-semibold text-stone-500" data-i18n="gift.price">价格范围</span>
+                            <span class="text-stone-800 font-semibold">${gift.price}</span>
+                        </div>
+                        
+                        <div class="flex items-start">
+                            <span class="inline-block w-16 text-sm font-semibold text-stone-500" data-i18n="gift.why">为什么适合</span>
+                            <span class="text-stone-700">${gift.reason}</span>
+                        </div>
+                        
+                        <div class="flex items-start">
+                            <span class="inline-block w-16 text-sm font-semibold text-stone-500" data-i18n="gift.where">哪里购买</span>
+                            <span class="text-stone-700">${gift.where}</span>
+                        </div>
+                    </div>
+                    
+                    <button class="gift-select-btn mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors" data-gift-id="${gift.id}">
+                        <span data-i18n="gift.select">加入心愿单</span>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        recommendationsContainer.appendChild(giftElement);
+    });
+    
+    // 重新绑定礼物选择按钮事件
+    bindGiftSelectEvents();
+}
+
+// 绑定礼物选择按钮事件
+function bindGiftSelectEvents() {
+    document.querySelectorAll('.gift-select-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const giftId = parseInt(this.dataset.giftId);
+            const gift = sessionData.recommendations.find(g => g.id === giftId);
+            
+            if (gift) {
+                // 切换选中状态
+                const isSelected = sessionData.selectedGifts.some(g => g.id === giftId);
+                
+                if (isSelected) {
+                    // 取消选中
+                    sessionData.selectedGifts = sessionData.selectedGifts.filter(g => g.id !== giftId);
+                    this.classList.remove('bg-green-600', 'hover:bg-green-700');
+                    this.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                    this.querySelector('span').textContent = '加入心愿单';
+                } else {
+                    // 选中
+                    sessionData.selectedGifts.push(gift);
+                    this.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                    this.classList.add('bg-green-600', 'hover:bg-green-700');
+                    this.querySelector('span').textContent = '已加入心愿单';
+                }
+                
+                // 记录事件
+                recordEvent(EVENT_TYPES.GIFT_SELECTED, {
+                    giftId: giftId,
+                    giftTitle: gift.title,
+                    isSelected: !isSelected,
+                    totalSelected: sessionData.selectedGifts.length
+                });
+                
+                // 保存到Firebase
+                if (sessionData.sessionId) {
+                    const sessionRef = db.collection('sessions').doc(sessionData.sessionId);
+                    sessionRef.update({
+                        selectedGifts: sessionData.selectedGifts
+                    });
+                }
+            }
+        });
+    });
+}
+
+// 在页面加载完成后初始化聊天窗口和推荐按钮
 document.addEventListener('DOMContentLoaded', function() {
     // 延迟初始化，确保所有元素都已加载
-    setTimeout(initializeChatWindows, 100);
+    setTimeout(() => {
+        initializeChatWindows();
+        
+        // 为所有推荐按钮添加事件监听器
+        for (let i = 1; i <= 5; i++) {
+            const btn = document.getElementById(`generate-recommendation-btn-step${i}`);
+            if (btn) {
+                btn.addEventListener('click', generateRecommendationFromChat);
+            }
+        }
+    }, 100);
 });
